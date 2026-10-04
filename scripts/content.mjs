@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {assertSchema, contract, isDate, isJST, isX, validateDailyEdition} from './contract.mjs';
 export const labels = { verified: '確認済み事実', reported: '報道', unconfirmed: '未確認情報', editorial: '編集方針' };
 export const escape = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function safeURL(value) {
   try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol); } catch { return false; }
 }
 export function parse(text, filename = '') {
-  const match = text.replace(/^\uFEFF/, '').match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  const match = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) throw new Error(`${filename}: JSON front matter が必要です`);
   return { ...JSON.parse(match[1]), body: match[2], slug: path.basename(filename, '.md') };
 }
@@ -24,21 +25,22 @@ export function validate(articles, editions, config) {
     if (!labels[a.status] || !['news','guide'].includes(a.kind)) throw new Error(`${a.slug}: 無効な status / kind`);
     if (a.kind === 'news' && a.status === 'editorial') throw new Error(`${a.slug}: ニュースに編集方針は使えません`);
     if (a.kind === 'guide' && a.status !== 'editorial') throw new Error(`${a.slug}: ガイドは編集方針としてください`);
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(a.published) || !Number.isFinite(Date.parse(a.published))) throw new Error(`${a.slug}: JSTの published が必要です`);
+    if (!isJST(a.published)) throw new Error(`${a.slug}: JSTの published が必要です`);
     const sources = a.sources ?? [];
     if (a.kind === 'news' && !sources.length) throw new Error(`${a.slug}: ニュースには出典が必要です`);
     for (const s of sources) {
       if (!s.title || !safeURL(s.url) || !['official','paper','github','blog','media','x'].includes(s.type) || !Number.isFinite(Date.parse(s.checked))) throw new Error(`${a.slug}: 無効な出典`);
     }
-    if (a.status === 'verified' && !sources.some(s => ['official','paper','github','blog'].includes(s.type) && !/(^|\.)((x|twitter)\.com)$/.test(new URL(s.url).hostname))) throw new Error(`${a.slug}: X以外の一次資料での確認が必要です`);
-    if (a.status === 'reported' && !sources.some(s => s.type === 'media')) throw new Error(`${a.slug}: 報道機関の出典が必要です`);
-    if (sources.some(s => s.type === 'x' || /(^|\.)(x|twitter)\.com$/.test(new URL(s.url).hostname)) && a.kind === 'news' && !a.verificationNote) throw new Error(`${a.slug}: Xの検証状況を verificationNote に記載してください`);
+    if (a.status === 'verified' && !sources.some(s => ['official','paper','github','blog'].includes(s.type) && !isX(s))) throw new Error(`${a.slug}: X以外の一次資料での確認が必要です`);
+    if (a.status === 'reported' && !sources.some(s => s.type === 'media' && !isX(s))) throw new Error(`${a.slug}: 報道機関の出典が必要です`);
+    if (sources.some(isX) && a.kind === 'news' && !a.verificationNote) throw new Error(`${a.slug}: Xの検証状況を verificationNote に記載してください`);
   }
   for (const e of editions) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.slug) || !Number.isFinite(Date.parse(e.published)) || !e.title || !['launch','daily'].includes(e.kind)) throw new Error(`${e.slug}: 無効な朝刊`);
+    if (!isDate(e.slug) || !isJST(e.published) || e.published.slice(0,10)!==e.slug || !e.title || !['launch','daily'].includes(e.kind)) throw new Error(`${e.slug}: 無効な朝刊`);
     if (!Array.isArray(e.top5) || e.top5.length !== 5 || new Set(e.top5).size !== 5 || !Array.isArray(e.articles) || new Set(e.articles).size !== e.articles.length || !e.top5.every(s => e.articles.includes(s)) || !e.articles.every(s => slugs.has(s)) || !e.articles.includes(e.hero)) throw new Error(`${e.slug}: トップ5・一面・記事参照を確認してください`);
     if (e.kind === 'daily' && e.articles.some(s => articles.find(a => a.slug === s).kind !== 'news')) throw new Error(`${e.slug}: 日刊号に開設ガイドを入れないでください`);
     if (!Array.isArray(e.deals) || !e.deals.every(s => e.articles.includes(s) && articles.find(a=>a.slug===s).category==='deals')) throw new Error(`${e.slug}: セール参照が無効です`);
+    if (e.kind === 'daily') validateDailyEdition(articles,e);
   }
 }
 function inline(line) {
@@ -77,5 +79,8 @@ export function priceStats(rows, product) {
   return {current, baseline, change:baseline?100*(current.total-baseline.total)/baseline.total:null, low:Math.min(...comparable.map(r=>r.total)), history:list};
 }
 export function validatePrices(rows) {
+  assertSchema(rows,{type:'array',items:contract.$defs.price},'prices');
+  const keys=new Set();
+  for(const row of rows){const key=JSON.stringify([row.sku,row.shop,row.condition,row.observed]);if(keys.has(key))throw new Error('Duplicate price observation');keys.add(key);}
   for(const r of rows){if(!r.product||!r.sku||!r.shop||!r.condition||r.currency!=='JPY'||!Number.isFinite(r.total)||r.total<=0||!safeURL(r.url)||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(r.observed)||!Number.isFinite(Date.parse(r.observed))||!['buy','conditional','wait'].includes(r.verdict)||!r.reason)throw new Error('価格データはSKU、税込送料込みのtotal、JST観測時刻、条件、出典、判断理由が必要です');}
 }

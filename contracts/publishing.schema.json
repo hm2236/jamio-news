@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hm2236.github.io/jamio-news/contracts/publishing.schema.json",
+  "title": "JAMIO NEWS daily publishing contract v1",
+  "description": "Normalized draft package. Markdown uses JSON front matter; slug and body are derived from the file. Structural validation is not fact verification.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["date", "edition", "articles", "priceObservations"],
+  "properties": {
+    "date": {"type": "string", "format": "date"},
+    "edition": {"$ref": "#/$defs/edition"},
+    "articles": {"type": "array", "minItems": 5, "items": {"$ref": "#/$defs/article"}},
+    "priceObservations": {"type": "array", "items": {"$ref": "#/$defs/price"}}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "jst": {"type": "string", "format": "jst-date-time"},
+    "url": {"type": "string", "format": "source-url"},
+    "slugs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}},
+    "production": {
+      "type": "object", "additionalProperties": false, "required": ["contractVersion", "x"],
+      "properties": {
+        "contractVersion": {"const": 1},
+        "x": {
+          "type": "object", "additionalProperties": false, "required": ["status", "note"],
+          "properties": {
+            "status": {"enum": ["available", "partial", "unavailable", "not-used"]},
+            "note": {"$ref": "#/$defs/text"}
+          }
+        }
+      }
+    },
+    "edition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slug", "title", "kind", "published", "top5", "hero", "articles", "deals", "production", "body"],
+      "properties": {
+        "slug": {"type": "string", "format": "date"},
+        "title": {"$ref": "#/$defs/text"}, "kind": {"const": "daily"},
+        "published": {"$ref": "#/$defs/jst"},
+        "top5": {"$ref": "#/$defs/slugs", "minItems": 5, "maxItems": 5},
+        "hero": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "articles": {"$ref": "#/$defs/slugs", "minItems": 5},
+        "deals": {"$ref": "#/$defs/slugs"},
+        "production": {"$ref": "#/$defs/production"},
+        "body": {"$ref": "#/$defs/text"}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false, "required": ["title", "type", "url", "checked"],
+      "properties": {
+        "title": {"$ref": "#/$defs/text"},
+        "type": {"enum": ["official", "paper", "github", "blog", "media", "x"]},
+        "url": {"$ref": "#/$defs/url"}, "checked": {"$ref": "#/$defs/jst"},
+        "author": {"$ref": "#/$defs/text"}, "postPublished": {"$ref": "#/$defs/jst"},
+        "claim": {"$ref": "#/$defs/text"}, "identityNote": {"$ref": "#/$defs/text"}
+      }
+    },
+    "article": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slug", "title", "summary", "category", "tags", "status", "kind", "published", "verificationNote", "sources", "body"],
+      "properties": {
+        "slug": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "title": {"$ref": "#/$defs/text"}, "summary": {"$ref": "#/$defs/text"},
+        "category": {"enum": ["ai", "hardware", "deals", "local", "life"]},
+        "tags": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+        "status": {"enum": ["verified", "reported", "unconfirmed"]}, "kind": {"const": "news"},
+        "published": {"$ref": "#/$defs/jst"}, "verificationNote": {"$ref": "#/$defs/text"},
+        "sources": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source"}},
+        "updated": {"$ref": "#/$defs/jst"}, "corrections": {"$ref": "#/$defs/text"},
+        "body": {"$ref": "#/$defs/text"}
+      }
+    },
+    "price": {
+      "type": "object", "additionalProperties": false,
+      "required": ["product", "sku", "shop", "condition", "currency", "total", "url", "observed", "verdict", "reason"],
+      "properties": {
+        "product": {"$ref": "#/$defs/text"}, "sku": {"$ref": "#/$defs/text"},
+        "shop": {"$ref": "#/$defs/text"}, "condition": {"$ref": "#/$defs/text"},
+        "currency": {"const": "JPY"}, "total": {"type": "integer", "minimum": 1},
+        "url": {"$ref": "#/$defs/url"}, "observed": {"$ref": "#/$defs/jst"},
+        "verdict": {"enum": ["buy", "conditional", "wait"]}, "reason": {"$ref": "#/$defs/text"}
+      }
+    }
+  },
+  "x-handoff": {
+    "repository": "hm2236/jamio-news", "timezone": "Asia/Tokyo", "targetTime": "08:00",
+    "draftFiles": ["drafts/YYYY-MM-DD/edition.md", "drafts/YYYY-MM-DD/articles/YYYY-MM-DD-<slug>.md", "drafts/YYYY-MM-DD/prices.json"],
+    "publishedFiles": ["content/editions/YYYY-MM-DD.md", "content/articles/YYYY-MM-DD-<slug>.md", "data/prices.json"],
+    "commands": ["node scripts/new-edition.mjs YYYY-MM-DD", "node scripts/daily.mjs check drafts/YYYY-MM-DD", "node scripts/daily.mjs apply drafts/YYYY-MM-DD", "node scripts/validate.mjs", "node --test", "node scripts/build.mjs", "node scripts/daily.mjs confirm YYYY-MM-DD <merged-main-sha>"],
+    "failure": "Nonzero exit and JSON status=failed. Do not merge or claim publication. No fabricated news/prices/X retrieval; fewer than five sourced stories means no edition.",
+    "idempotency": "Identical same-day package is unchanged; differing content or observations is a conflict. Corrections require a separate reviewed PR with updated/corrections.",
+    "success": "JSON status=published, date, editionUrl, commit, digest, workflowUrl; only after successful Pages workflow for that main SHA and matching public publication.json and edition HTML.",
+    "editionUrl": "https://hm2236.github.io/jamio-news/editions/YYYY-MM-DD/"
+  }
+}

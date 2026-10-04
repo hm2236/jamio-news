@@ -16,6 +16,7 @@ Node.js 22以上。外部パッケージのインストールは不要です。
 
 ```sh
 node --test
+node scripts/validate.mjs
 node scripts/build.mjs
 node scripts/serve.mjs
 ```
@@ -30,7 +31,19 @@ node scripts/serve.mjs
 node scripts/new-edition.mjs 2026-10-05
 ```
 
-`drafts/2026-10-05/` に朝刊と記事のひな型を生成します。草稿はサイトに出ません。裏取り済みの記事を `content/articles/`、5記事を選んだ朝刊を `content/editions/` へ移し、検証・ビルドします。
+`drafts/2026-10-05/` に空の朝刊、`articles/`、空の観測配列 `prices.json` を生成します。草稿は公開対象外・Git管理対象外です。日付付きslugで実際に確認した記事を作成し、朝刊の参照と `production` メタデータを埋めます。未完成の草稿は検証に失敗します。
+
+```sh
+node scripts/daily.mjs check drafts/2026-10-05
+node scripts/daily.mjs apply drafts/2026-10-05
+node scripts/validate.mjs
+node --test
+node scripts/build.mjs
+```
+
+`check` は無変更、`apply` は全件検証後に記事・号を追加し価格を追記します。既存の同日号と一致する再実行は `unchanged`、相違があれば停止します。出力はJSONで、`applied` はローカル反映のみです。PRを公開・CI確認・マージ後、mainを取得して `node scripts/daily.mjs confirm YYYY-MM-DD <マージ後mainの40桁SHA>` を実行し、`published` と `editionUrl` が返って初めて公開完了です。
+
+**機械可読契約**：[contracts/publishing.schema.json](contracts/publishing.schema.json)。必須項目、独自format、参照・出典の追加検証、[08:00 JSTの具体的な引き継ぎ](docs/morning-pipeline.md)、[実行プロンプト](docs/chatgpt-morning-prompt.md)をセットで使用してください。日刊号はビルド・CIでも同じ契約を検証します。
 
 記事メタデータ例：
 
@@ -57,6 +70,7 @@ node scripts/new-edition.mjs 2026-10-05
 - 出典種別：`official`, `paper`, `github`, `blog`, `media`, `x`。
 - `verified`はX以外の一次資料必須、`reported`は報道出典必須、Xがあれば`verificationNote`必須。
 - 朝刊：`top5`（5件）、`hero`、`articles`（全記事）、`deals`（その号の重要セール）を記事slugで参照。
+- 日刊記事のslugは `YYYY-MM-DD-<slug>`、本文と `verificationNote` は必須。出典の `checked` も実際のJST確認時刻です。朝刊には `production: {"contractVersion": 1, "x": {"status": "unavailable", "note": "実際の取得不可理由・代替出典の説明"}}` など、実際のX利用状況を記録します。出典URLの例示ドメインは日刊契約で拒否します。
 - 訂正時は`updated`、`corrections`を記載。既存号を消さず、出典と訂正履歴を残します。
 
 検証はメタデータの抜けや矛盾を止めるもので、記事の主張を自動的に事実確認するものではありません。編集者が原典と主張を照合する必要があります。
@@ -73,6 +87,6 @@ GitHub Settings → Pages → Build and deployment → Source を **GitHub Actio
 
 公式参考：[GitHub Pagesのカスタムワークフロー](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Open-Meteo Forecast API](https://open-meteo.com/en/docs)。天気の地域は `public/assets/app.js` のAPI URLで設定します。
 
-## 将来の毎朝8時の流れ
+## 毎朝8時への引き継ぎ
 
-[収集・生成の運用案](docs/morning-pipeline.md)と[編集方針](docs/editorial-policy.md)を参照。現時点では日刊スケジュールやAI生成API、チャット通知を有効化していません。
+[運用手順](docs/morning-pipeline.md)、[ChatGPTへ渡すプロンプト](docs/chatgpt-morning-prompt.md)、[編集方針](docs/editorial-policy.md)を参照。草稿・検証・反映・公開確認の道具は実装済みです。収集・スケジュール・チャット通知を自動実行する接続は、このリポジトリでは有効化していません。
