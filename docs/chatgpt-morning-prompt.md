@@ -24,7 +24,7 @@ remoteで書いてよいファイルは次の3種のみです。草稿/ログ/va
 
 同じ日付のarticle/edition publishedとsource checked/price observedの時系列を守ります。07:00を過ぎて確認した内容は実際のpublished時刻へ修正し、期限内完成を偽りません。日刊PRをmain宛に作成/再開し、全変更パスを確認してください。remoteではdaily.mjs check/applyをローカルで実行する必要はありません。
 
-PRの正確なheadShaに対するPublish JAMIO NEWS（pages.yml、pull_request）のnode scripts/validate.mjs、node --test、node scripts/build.mjsがすべて成功することを確認。同時にDaily publication guard（daily-publication.yml、pull_request_target）の成功runとjobログのJAMIO_DAILY_VALIDATION JSONを確認します。target runのhead_shaはbaseShaで、JSONのheadShaが候補のheadShaです。JSONのcontractVersion/status/pr/baseSha/headSha/dateを照合し、editionUrl/digestを保存。skipped、別head、guard-passedログだけでは完了ではありません。mainが変われば最新baseを取り込み再検証します。
+PRの正確なheadShaに対するPublish JAMIO NEWS（pages.yml、pull_request）のnode scripts/validate.mjs、node --test、node scripts/build.mjsがすべて成功することを確認。同時にDaily publication guard（daily-publication.yml、pull_request_target）の成功runとjobログのJAMIO_DAILY_VALIDATION JSONを確認します。target runのAPI head_shaはheadShaまたはbaseShaとして表示され得るため、runのpull_requests内の対象PR番号/head.sha/base.shaとJSONのcontractVersion/status/pr/baseSha/headSha/dateの完全一致を要求します。editionUrl/digestを保存。skipped、別head、guard-passedログだけでは完了ではありません。mainが変われば最新baseを取り込み再検証します。
 
 local/Workではnode scripts/new-edition.mjsでdrafts/YYYY-MM-DD/edition.md・articles/・prices.jsonを用意し、既存契約どおりcheck → apply → validate → 全テスト → build → PRへ進めます。PR以降の日刊パスガードとCI確認はremoteと共通です。
 
