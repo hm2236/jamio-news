@@ -38,7 +38,7 @@ export function initDraft(root, date) {
   if (fs.existsSync(folder)) throw new Error('Draft already exists; resume it without reinitializing');
   if (fs.existsSync(path.join(root, 'content/editions', `${date}.md`))) throw new Error('Edition already exists; confirm publication or make a separate correction PR');
   fs.mkdirSync(path.join(folder, 'articles'), {recursive: true});
-  const edition = {title: `じゃみお朝刊 — ${date}`, kind: 'daily', published: `${date}T08:00:00+09:00`, top5: [], hero: '', articles: [], deals: [], production: {contractVersion: 1, x: {status: 'not-used', note: ''}}, body: '\n'};
+  const edition = {title: `じゃみお朝刊 — ${date}`, kind: 'daily', published: `${date}T07:00:00+09:00`, top5: [], hero: '', articles: [], deals: [], production: {contractVersion: 1, x: {status: 'not-used', note: ''}}, body: '\n'};
   fs.writeFileSync(path.join(folder, 'edition.md'), serialize(edition), {flag: 'wx'});
   fs.writeFileSync(path.join(folder, 'prices.json'), '[]\n', {flag: 'wx'});
   return {status: 'draft', date, folder};
@@ -56,7 +56,12 @@ export function readDraft(folder) {
   const articles = readContent(articleFolder);
   const priceObservations = readJSON(path.join(folder, 'prices.json'));
   const bundle = {date, edition, articles, priceObservations};
+  return validatePackage(bundle);
+}
+export function validatePackage(bundle) {
+  const {date, edition, articles, priceObservations} = bundle;
   assertSchema(bundle);
+  if (edition.slug !== date) throw new Error('Package date and edition date must match');
   if (canonical(articles.map(a => a.slug).sort()) !== canonical(edition.articles.slice().sort())) throw new Error('Draft must contain exactly the edition articles');
   validatePrices(priceObservations);
   for (const row of priceObservations) if (row.observed.slice(0, 10) !== date || Date.parse(row.observed) > Date.parse(edition.published)) throw new Error('Price observations must be from this JST date, before edition publication');

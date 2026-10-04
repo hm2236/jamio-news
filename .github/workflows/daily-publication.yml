@@ -1,0 +1,29 @@
+name: Daily publication guard
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+permissions:
+  contents: read
+concurrency:
+  group: daily-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  daily-guard:
+    if: startsWith(github.event.pull_request.head.ref, 'daily/')
+    runs-on: ubuntu-latest
+    steps:
+      # Only trusted main code runs. Candidate files are read as Git blobs, never checked out.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch exact candidate objects
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git fetch origin "$PR_HEAD_SHA"
+      - name: Guard daily paths and publication invariants
+        run: node scripts/daily-pr.mjs

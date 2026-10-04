@@ -1,6 +1,13 @@
-# 朝8時の制作・公開ハンドオフ（外部スケジュールは未接続）
+# 06:00 JST制作開始・07:00 JST公開目標のハンドオフ
 
-日本時間で朝8時ごろ、情報収集 → 検証 → 朝刊生成 → GitHub反映 → Pages公開確認 → チャットへトップ5とリンク、の順で運用する想定です。収集・原典確認・生成に時間がかかるため、8時配信を目指すなら事前に収集を開始します。GitHub Actionsの定期実行は遅延や未実行があり、厳密な8時保証には使えません。
+毎日06:00・Asia/TokyoにChatGPT予定タスクが制作を開始し、調査 → 原典検証 → Markdown/価格観測 → GitHub PR → Actions検証 → マージ → Pages確認 → トップ5と完全版URLの順で、07:00 JSTまでの公開を目指します。GitHubは保存・検証・公開のバックエンドです。調査・生成はChatGPT予定タスクが担当し、OpenAI API課金や外部AI APIキーは追加しません。期限が来ても検証を省略せず、未完了はpending/blocked/lateと報告します。
+
+## 実行モードを自動選択
+
+- **local/Work**：cloneとNode.js 22以上が実際に使える環境では、既存の草稿 → check/apply → ローカル検証 → PR → 公開確認を維持します。
+- **remote/scheduled**：Webで原典を確認でき、GitHub APIの読み書き・ブランチ・PR作成/マージ・Actionsログ参照が利用可能で、cloneまたはNode実行が使えない場合はこちらを自動選択します。ChatGPT側のclone・Node・ハッシュ計算・ローカルスクリプト実行は不要です。最終ファイルをAPIでdailyブランチへ書き、ActionsのPR CIを権威ある検証として使います。
+
+APIが読み取り専用、PR/マージ権限がない、CIログや公開receiptにアクセスできない場合は不足する権限を報告して停止します。モード変更で出典・価格・日付・Top 5の契約は緩めません。
 
 ## 収集対象
 
@@ -44,13 +51,13 @@ Xの投稿はニュース候補です。公式発表、論文、GitHub、企業�
 
 articleのcategoryは `ai/hardware/deals/local/life`、statusは `verified/reported/unconfirmed`。sourcesは1件以上で、各要素に `title/type/url/checked` が必須。typeは `official/paper/github/blog/media/x`。verifiedにはX以外の一次資料、reportedにはmediaが必要です。ガイドは日刊記事に使用できません。タグは文字列の重複なし配列です。
 
-editionのtop5は重複なし5件。top5・heroはarticlesに含まれ、articlesは草稿の記事ファイルと完全一致します。dealsは同号のdealsカテゴリ記事だけ、なければ `[]`。記事slugは号の日付で始まり、article/editionのpublishedは同じJST日付で、記事が号より後になることはありません。チェック時刻はarticleのpublished（訂正時はupdated）以前です。08:00を過ぎて確認したものはpublishedを実際の制作時刻へ修正し、08:00に完成したと偽らないでください。
+editionのtop5は重複なし5件。top5・heroはarticlesに含まれ、articlesは草稿の記事ファイルと完全一致します。dealsは同号のdealsカテゴリ記事だけ、なければ `[]`。記事slugは号の日付で始まり、article/editionのpublishedは同じJST日付で、記事が号より後になることはありません。チェック時刻はarticleのpublished（訂正時はupdated）以前です。07:00を過ぎて確認したものはpublishedを実際の制作時刻へ修正し、期限内に完成したと偽らないでください。
 
 productionは `{"contractVersion":1,"x":{"status":"unavailable","note":"実際の取得不可理由と代替確認先"}}` の形です。statusは `available/partial/unavailable/not-used`、noteは空でない文字列。unavailable/not-usedの号でXを取得済み出典にすると停止します。X取得済みならsourceに `author/postPublished/claim/identityNote` も必須。postPublishedはJST換算した実際の投稿時刻です。XのURLをofficialなどと偽装しても、ホスト名で判定します。partialでは実際に取得できた範囲と失敗範囲をnoteに書きます。
 
 価格行は `product/sku/shop/condition/currency/total/url/observed/verdict/reason` が必須。currency=JPY、totalは正の安全な整数で税込送料込み、verdictは `buy/conditional/wait`。observedは同じJST日付かつ号のpublished以前。送料や購入条件が不明な観測は省略します。同じSKU・店舗・条件・観測日時の重複、内容相違による上書き、架空の例示URLを拒否。比較できる過去データがなければ30日前比を作りません。
 
-## 正確な実行手順
+## local/Workの実行手順
 
 1. 今日の日付をAsia/Tokyoで決定。開始時点の最新main、同日の既存号、`daily/YYYY-MM-DD` ブランチ/PR、配信台帳を確認します。途中でJST日付が変わった場合は停止して、翌日の別実行として調査し直します。
 2. cleanな隔離チェックアウトで `git fetch origin main`、最新mainから `daily/YYYY-MM-DD` ブランチを作成します。既存ブランチ/PRがあれば状況を調べて再開し、別の同日PRを作りません。並行して同じチェックアウトへ書き込まないでください。
@@ -79,15 +86,44 @@ confirmは、指定main SHAのPagesワークフロー成功、公開publication.
 
 成功結果はJSON：`status=published`、`date`、`editionUrl`、`commit`、`digest`、`workflowUrl`。完全版URLは `https://hm2236.github.io/jamio-news/editions/YYYY-MM-DD/`。チャットへの機械可読最終結果にもconfirmの値をそのまま含めます。公開manifestは配信台帳ではなく、厳密な一度だけ送信やチャット到達を保証しません。
 
-## ChatGPT 08:00 JSTタスクに渡すもの
+## ChatGPT 06:00 JSTタスクに渡すもの
 
-[実行プロンプト](chatgpt-morning-prompt.md) を既存タスクへ渡し、毎日08:00・Asia/Tokyoを明示します。08:00に起動する設定は制作完了時刻ではありません。08:00配信を目指す場合は先行調査を別途設定し、遅延時の扱いを決めます。この変更はタスク作成・既存タスク変更を行いません。
+[実行プロンプト](chatgpt-morning-prompt.md) を既存タスクへ渡し、毎日06:00・Asia/Tokyo開始、07:00 JSTまでの公開目標を明示します。この変更はリポジトリの手順を更新し、予定タスクの登録・時刻変更自体は行いません。
 
-必要条件はNode.js 22以上でclone・スクリプト/テストを実行できる環境、調査・原典の閲覧手段、対象repoに限定したGitHub Contents/PRのwrite権限と通常のマージ権限、Actionsを読み取る手段、チャット通知先と永続的配信台帳です。GitHub認証は外部接続/credential store/環境変数のみ、Gitへ保存しません。confirmは公開repoの読み取りが可能で、APIレート制限に必要なら外部の `GITHUB_TOKEN` を使います。
+共通の必要条件は調査・原典の閲覧手段、対象repoに限定したGitHub Contents/Git/PRのwrite権限と通常のマージ権限、Actionsとログを読み取る手段、公開Web receiptの閲覧、チャット通知先と永続的配信台帳です。Node.js 22以上とcloneはlocal/Workにだけ必要です。GitHub認証は外部接続/credential store/環境変数のみ、Gitへ保存しません。予定タスクの既存GitHub接続を使い、新しいAI APIキーは不要です。
 
-Webの予定タスクはそのチャットで利用可能な接続ツールを使いますが、ローカルフォルダを継続保持しません。各回にrepoから必要なコード・契約を取得し、実行環境で検証できることを事前に1回試します。接続が読み取りだけの場合や実行環境がスクリプトを実行できない場合は公開を中止し、承認済みの制作環境へ引き継ぎます。デスクトップのローカル予定タスクにはPCとアプリの起動・プロジェクトの可用性が必要です。[OpenAI公式 Scheduled tasks](https://learn.chatgpt.com/docs/automations)。
+Webの予定タスクでは利用可能な接続ツールを使い、remote/scheduledなら各回にGitHub APIからmain・契約・過去号を読み直します。スクリプトを実行できないことはremoteの停止理由ではありません。GitHub書き込み・PR・Actions確認などの接続不足だけは解消が必要です。デスクトップのlocal/Work予定タスクにはPCとアプリの起動・プロジェクトの可用性が必要です。[OpenAI公式 Scheduled tasks](https://learn.chatgpt.com/docs/automations)。
 
 予定実行の有無だけでGitHub書き込み能力が付くとは仮定しません。初回は[プロンプト](chatgpt-morning-prompt.md)を通常の実行で検証し、出典・公開確認・通知先を確認してから既存朝刊タスクへ適用します。ニュースと価格を生成するAPIやXアクセスが、この契約によって自動的に有効になることはありません。
+
+## remote/scheduledのAPI手順
+
+すべて対象は `hm2236/jamio-news`。既存の [JSON Schema](../contracts/publishing.schema.json) の必須項目と上記の原典確認ルールを使います。production metadataの形もlocalと同じで、新しいmodeフィールドは不要です。予定タスクのコンテナでcloneやNodeが使えなければ、スクリプトを実行しようと繰り返さず以下へ進みます。
+
+1. `GET /repos/hm2236/jamio-news/git/ref/heads/main` またはbranch APIでmain SHAを取得し、そのrefでREADME・本手順・編集方針・契約・過去号・価格履歴を読みます。取得したSHAを `baseSha` として記録。同日の号・dailyブランチ・PR・通知台帳を確認します。既存の公開号は再作成せず確認/通知再開。同日の異なる内容は自動上書きせず別の訂正PRへ引き継ぎます。
+2. 原典を実際に読み、5件の重要記事を選択します。正確に5件のTop 5が必要で、架空・未閲覧・埋め草は禁止です。十分な記事がなければblockedで停止。X取得不可なら `production.x.status=unavailable` と理由・代替出典。partialは実際に取得できた範囲だけを出典にします。検証が事実の真偽を自動保証するわけではありません。
+3. `POST /git/refs` の `ref=refs/heads/daily/YYYY-MM-DD, sha=baseSha` で同日ブランチだけを作成。既存ブランチは再利用してparent SHAを読み直します。mainのrefを直接更新しません。forkや別名ブランチで日刊ガードを回避しません。
+4. 最終Markdownを `content/articles/YYYY-MM-DD-<slug>.md` と `content/editions/YYYY-MM-DD.md` に直接書きます。記事・号の日付、JST実確認時刻、全slug参照、source/status、production.x、本文はlocalと同一契約。実観測がある場合だけ `data/prices.json` の完全な既存配列を保って観測を追記します。観測なしならそのファイルを変更しません。未完成草稿、validation metadata、ログなどの追加ファイルを書きません。
+5. 推奨はGit Data APIのblob → 現在のbranch commitのtreeをbaseにしたtree → parentを現在のbranch SHAとするcommit → `PATCH /git/refs/heads/daily/YYYY-MM-DD`（force=false）の順で、全最終ファイルを1コミットで更新します。Contents APIでファイルごとに書く場合はbranch指定と現在blob SHAによる衝突検出を使い、全件を書き終えた最後のbranch SHAを `headSha` として記録します。途中コミットのCIを最終検証に使いません。mainが進んだら最新mainを取り込み、再度CIを待ちます。
+6. `POST /pulls` でhead=`daily/YYYY-MM-DD`, base=`main` のPRを作成。既存の同日PRがあれば更新・再開。PRの変更ファイル一覧を最後まで読み、許可範囲のみであることを確認します。ChatGPT側でlocal check/applyは実行不要。Actionsの **Daily publication guard** と **Publish JAMIO NEWS** の両方を必須として待ちます。
+
+日刊ガードは `pull_request_target` でmainのコードを使用し、候補のGit blobだけを読みます。候補のスクリプトは実行せず、write権限・秘密・永続認証を渡しません。完全なbase/head差分で、同日記事/号の追加と価格追記だけを許可します。scripts/contracts/.github/tests/public/site.config等、削除・rename・symlink・実行可能ファイル、既存記事/号の変更は拒否します。baseはheadの祖先であることが必要です。通常の訂正は別名の明示レビュー済みPRで行います。[GitHub公式 pull_request_target](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target)。
+
+価格の既存配列は変更不可のprefix。追記は同日・号のpublished以前で、重複と衝突を拒否します。書式だけ変えて価格ファイルを更新することも拒否します。API書き込み途中やguard-passedのログだけでは公開に進みません。
+
+## remoteの検証済みheadと公開確認（Node不要）
+
+API確認の実行可能な仕様は [scripts/remote-proof.mjs](../scripts/remote-proof.mjs) とテストにあります。ChatGPTは以下のJSONフィールドを読み取って照合するだけでよく、このファイルを実行する必要はありません。
+
+1. PRを再取得し、open・base=main・同一repo・branch日付・head.sha=`headSha`・base.sha=`baseSha`を確認。mainも再取得してbaseShaと一致させます。変更があれば新しいhead/baseで再検証。対象headの `Publish JAMIO NEWS`（pages.yml, event=pull_request）の最新runをActions APIで調べ、`head_sha=headSha`, `head_branch=daily/YYYY-MM-DD`, status=completed, conclusion=successを要求します。skipped/neutral/旧headの成功は不可。PR CIは必ず `node scripts/validate.mjs`, `node --test`, `node scripts/build.mjs` を実行します。
+2. `actions/workflows/daily-publication.yml/runs?event=pull_request_target` を必要なページまで読み、成功runのjobログの `JAMIO_DAILY_VALIDATION ` に続くJSONを取得します。guardのイベントはbaseで走るためrunの `head_sha` は **baseSha**、検証対象はログの **headSha** です。JSONのstatus=guard-passed, contractVersion=1, pr=対象番号, baseSha/headSha/date一致を確認し、editionUrlと64桁digestを保存します。run自体のstatus=completed/conclusion=successも必須です。ログが取得不能なら止まり、推測でdigestを作りません。
+3. 両方の最新CI成功と原典/本文レビューを確認したら、再度PR/head/baseとmainを確認し、`PUT /repos/hm2236/jamio-news/pulls/N/merge` に **sha=headSha** を指定してそのheadだけをマージ。期待SHAが変わっていればGitHubに拒否させます。レビュー条件は通常どおり遵守し、未検証コミットを追加しません。[GitHub公式 merge API](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request)。
+4. merge結果のmerged=trueとshaを `mainSha` に記録し、再取得したPRのmerged=true、head.sha=headSha、merge_commit_sha=mainShaを照合します。単に最新mainを読み直してそのSHAをマージ結果の代わりにしません。
+5. `actions/workflows/pages.yml/runs?head_sha=mainSha&branch=main` から最新のmain push/workflow_dispatch runのstatus=completed/conclusion=successを確認。`head_sha=mainSha` が必須です。別コミットのPages成功やPRのbuild成功では代用しません。
+6. Webで `https://hm2236.github.io/jamio-news/publication.json?commit=mainSha` を読み、contractVersion=1、commit=mainSha、editions内のdate=対象日付、url=保存したeditionUrl、digest=保存した検証済みdigestをすべて照合します。号HTMLのcanonical URLと `meta name=jamio-edition-digest` も一致することを確認します。WebツールがJSON/HTMLを読めない場合はpendingで停止し、HTTP 200だけでは成功にしません。
+7. 成功後だけ、最終結果 `{"status":"published","date":"対象日","editionUrl":"検証したURL","commit":"mainSha","digest":"検証済みdigest","workflowUrl":"mainの成功run URL","pr":PR番号,"validatedHead":"headSha"}` とトップ5/完全版リンクを返します。配信台帳と重複送信規則はlocalと共通。receiptは通知の到達証明ではありません。
+
+CI失敗・権限不足はblocked、進行中/receiptのキャッシュ待ちはpending、07:00を過ぎても検証後に公開できた場合はpublishedと遅延を明示します。07:00に間に合わせるためにCI/裏取り/receiptを省略しません。30秒程度の間隔で状態確認し、1回の公開確認は最大10分を目安に待ち、未完了なら停止地点から再開します。Pagesの別main更新により対象commitが公開されなかった場合も、そのcommitの公開済みとは報告しません。
 
 ## 未設定の接続
 
@@ -96,6 +132,6 @@ Webの予定タスクはそのチャットで利用可能な接続ツールを�
 - 更新に用いる最小権限のGitHub認証。
 - チャット通知先と、通知を実行する環境。
 
-現在有効なワークフローは、記事更新時の静的ビルドとPages公開のみです。朝8時の収集やチャット配信を実行するワークフローはありません。
+GitHubには日刊PRの信頼済みガードと検証・ビルド・Pages公開を実装しています。GitHub内でニュースを自律収集する予定実行やAI生成、チャット配信は追加していません。
 
 参考：[GitHub Actionsのscheduleイベント](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)。
