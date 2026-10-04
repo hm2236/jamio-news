@@ -24,13 +24,15 @@ remoteで書いてよいファイルは次の3種のみです。草稿/ログ/va
 
 同じ日付のarticle/edition publishedとsource checked/price observedの時系列を守ります。07:00を過ぎて確認した内容は実際のpublished時刻へ修正し、期限内完成を偽りません。日刊PRをmain宛に作成/再開し、全変更パスを確認してください。remoteではdaily.mjs check/applyをローカルで実行する必要はありません。
 
-PRの正確なheadShaに対するPublish JAMIO NEWS（pages.yml、pull_request）のnode scripts/validate.mjs、node --test、node scripts/build.mjsがすべて成功することを確認。同時にDaily publication guard（daily-publication.yml、pull_request_target）の成功runとjobログのJAMIO_DAILY_VALIDATION JSONを確認します。target runのhead_shaはbaseShaで、JSONのheadShaが候補のheadShaです。JSONのcontractVersion/status/pr/baseSha/headSha/dateを照合し、editionUrl/digestを保存。skipped、別head、guard-passedログだけでは完了ではありません。mainが変われば最新baseを取り込み再検証します。
+PRの正確なheadShaに対するPublish JAMIO NEWS（pages.yml、pull_request）のnode scripts/validate.mjs、node --test、node scripts/build.mjsがすべて成功することを確認。同時にDaily publication guard（daily-publication.yml、pull_request_target）の成功runとjobログのJAMIO_DAILY_VALIDATION JSONを確認します。target runのAPI head_shaはheadShaまたはbaseShaとして表示され得るため、runのpull_requests内の対象PR番号/head.sha/base.shaとJSONのcontractVersion/status/pr/baseSha/headSha/dateの完全一致を要求します。editionUrl/digestを保存。skipped、別head、guard-passedログだけでは完了ではありません。mainが変われば最新baseを取り込み再検証します。
 
 local/Workではnode scripts/new-edition.mjsでdrafts/YYYY-MM-DD/edition.md・articles/・prices.jsonを用意し、既存契約どおりcheck → apply → validate → 全テスト → build → PRへ進めます。PR以降の日刊パスガードとCI確認はremoteと共通です。
 
 両CI成功と原典/本文レビュー後、PR/head/baseと最新mainを再取得し、通常のレビュー・承認条件を守ってmerge APIにsha=検証済みheadShaを指定してください。マージ結果のshaをmainShaとして保存し、merged PRのhead.shaとmerge_commit_shaを照合。未検証headはマージせず、force-pushで競合を隠さないでください。
 
 remote公開確認にはNodeもcloneも不要です。mainShaに対するPublish JAMIO NEWSのmain push/workflow_dispatch成功を確認し、Webで公開publication.json?commit=mainShaを読んでcontractVersion=1、commit=mainSha、対象date、editionUrl、検証済みdigestの完全一致を確認します。号HTMLのcanonical URL/edition digestも一致させます。localではdaily.mjs confirmで同じ照合が可能です。HTTP 200、トップページ表示、別コミットの成功だけではpublishedと報告しません。
+
+WebでPages JSON/HTMLを取得できない場合は、そのmainShaの成功workflowのdeploy job最終ステップVerify public deployment receiptから、JAMIO_PUBLIC_RECEIPT JSONをGitHub API/接続ツールで読んでください。Actions自身が実際の公開receipt/最新号HTMLを照合した結果です。status=receipt-verified、contractVersion=1、commit=mainSha、対象date/url/digestとverifiedEditionのdate/url/digestが検証済みPRの値と一致することを確認。その正確なmainShaのworkflow全体がsuccessになった後だけpublishedとしてよく、他のチャット/記事/非Actionsログの同名JSONは使いません。両経路とも取得不能ならpendingで停止します。
 
 成功時だけトップ5（確認状態付き）と完全版URLを返し、最終機械可読結果にstatus=published、date、editionUrl、commit=mainSha、digest、workflowUrl、pr、validatedHead=headShaをそのまま含めます。X取得不可など重要な制約も添えます。送信成功後に外部の永続台帳へ日付・URL・digest・送信先・送信完了を保存。送信済みまたは送信状態不明の号は重複送信しません。
 

@@ -91,7 +91,7 @@
       "authoritativeCI": ["Daily publication guard: trusted main validates the whole base/head diff and package", "Publish JAMIO NEWS: node scripts/validate.mjs; node --test; node scripts/build.mjs on exact PR head"],
       "validationReceipt": "JAMIO_DAILY_VALIDATION JSON in successful guard job logs: contractVersion, pr, baseSha, headSha, date, editionUrl, digest. guard-passed alone is not complete CI success.",
       "merge": "Require both successful workflows for recorded head/base, re-read PR and main, then merge API with sha=validated head. Record the merge response sha and merged PR merge_commit_sha.",
-      "confirmation": "Require successful Publish JAMIO NEWS for merged main SHA plus public publication.json contractVersion=1 and exact commit/date/url/digest from validated guard receipt; also check edition HTML canonical/digest. No local Node required.",
+      "confirmation": "Require successful Publish JAMIO NEWS for merged main SHA plus public publication.json contractVersion=1 and exact commit/date/url/digest from validated guard receipt; also check edition HTML canonical/digest. If direct Web cannot retrieve Pages, read JAMIO_PUBLIC_RECEIPT from that exact successful main deployment job: receipt-verified and matching commit/editions/verifiedEdition. Actions fetched and verified the actual public receipt/HTML. No local Node required.",
       "deadline": "07:00 JST is a target, never permission to skip validation or claim unconfirmed publication. Report blocked/pending/late explicitly."
     },
     "draftFiles": ["drafts/YYYY-MM-DD/edition.md", "drafts/YYYY-MM-DD/articles/YYYY-MM-DD-<slug>.md", "drafts/YYYY-MM-DD/prices.json"],
