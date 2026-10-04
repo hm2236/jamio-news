@@ -18,7 +18,9 @@ jobs:
         with:
           node-version: '22'
       - name: Check content and behavior
-        run: node --test
+        run: |
+          node scripts/validate.mjs
+          node --test
       - name: Build static pages
         run: node scripts/build.mjs
       - uses: actions/upload-pages-artifact@v4

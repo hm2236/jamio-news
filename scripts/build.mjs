@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {execFileSync} from 'node:child_process';
+import {editionDigest} from './production.mjs';
 import {escape as esc, labels, readContent, validate, markdown, validatePrices, priceStats} from './content.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const config=JSON.parse(fs.readFileSync(path.join(root,'site.config.json'),'utf8'));
@@ -54,5 +56,13 @@ const rssItems=[...editions.map(e=>({title:e.title,url:new URL(`editions/${e.slu
 write('rss.xml',`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>じゃみお朝刊 / JAMIO NEWS</title><link>${esc(base)}</link><description>${esc(config.subtitle)}</description><language>ja</language><atom:link href="${esc(new URL('rss.xml',base).href)}" rel="self" type="application/rss+xml"/>${rssItems.map(i=>`<item><title>${esc(i.title)}</title><link>${esc(i.url)}</link><guid isPermaLink="true">${esc(i.url)}</guid><pubDate>${new Date(i.date).toUTCString()}</pubDate><description>${esc(i.description)}</description></item>`).join('')}</channel></rss>`);
 write('sitemap.xml',`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['', 'archive/','topics/','search/','prices/','policy/',...Object.keys(config.categories).map(k=>`categories/${k}/`),...articles.map(a=>`articles/${a.slug}/`),...editions.map(e=>`editions/${e.slug}/`)].map(p=>`<url><loc>${esc(new URL(p,base).href)}</loc></url>`).join('')}</urlset>`);
 write('robots.txt',`User-agent: *\nAllow: /\nSitemap: ${new URL('sitemap.xml',base).href}\n`);write('.nojekyll','');
+// A commit-bound public receipt lets producers distinguish a fresh deploy from cached pages.
+let commit=process.env.GITHUB_SHA || null;
+if(!commit){try{commit=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();}catch{/* Unversioned local previews cannot confirm a deployment. */}}
+if(commit&&!/^[a-f0-9]{40}$/.test(commit))throw new Error('Invalid build commit SHA');
+const publication=editions.map(e=>({date:e.slug,url:new URL(`editions/${e.slug}/`,base).href,digest:editionDigest(e,articles,prices)}));
+write('publication.json',JSON.stringify({contractVersion:1,commit,editions:publication},null,2));
+for(const e of publication){const file=path.join(out,`editions/${e.date}/index.html`);fs.writeFileSync(file,fs.readFileSync(file,'utf8').replace('</head>',`<meta name="jamio-edition-digest" content="${e.digest}"></head>`));}
+write('contracts/publishing.schema.json',fs.readFileSync(path.join(root,'contracts/publishing.schema.json'),'utf8'));
 fs.cpSync(path.join(root,'public'),out,{recursive:true});
 console.log(`Built ${articles.length} articles, ${editions.length} editions → ${out}`);

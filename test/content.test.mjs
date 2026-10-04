@@ -10,6 +10,11 @@ test('published content meets editorial requirements',()=>validate(articles,edit
 test('X alone cannot establish a verified fact, even if mislabeled official',()=>{
  assert.throws(()=>validate([make({sources:[{title:'X',type:'official',url:'https://x.com/example/status/123',checked:'2026-10-04T08:00:00+09:00'}],verificationNote:'裏取りなし'})],[],config),/一次資料/);
 });
+test('alternate X host spelling or a media label cannot bypass source policy',()=>{
+ const sources=[{title:'X',type:'official',url:'https://x.com./example/status/123',checked:'2026-10-04T08:00:00+09:00'}];
+ assert.throws(()=>validate([make({sources,verificationNote:'裏取りなし'})],[],config),/一次資料/);
+ sources[0].type='media';assert.throws(()=>validate([make({status:'reported',sources,verificationNote:'裏取りなし'})],[],config),/報道機関/);
+});
 test('news requires evidence and X requires a verification note',()=>{
  assert.throws(()=>validate([make({sources:[]})],[],config),/出典/);
  assert.throws(()=>validate([make({status:'unconfirmed',sources:[{title:'投稿',type:'x',url:'https://x.com/example/status/123',checked:'2026-10-04T08:00:00+09:00'}]})],[],config),/検証状況/);
@@ -20,7 +25,7 @@ test('Markdown treats raw HTML as text and refuses executable links',()=>{
  const html=markdown('<script>alert(1)</script>\n\n[bad](javascript:alert)\n\n[ok](https://example.com)\n\n**大事**');
  assert.ok(!html.includes('<script>'));assert.ok(!html.includes('href="javascript:'));assert.ok(html.includes('<strong>大事</strong>'));assert.ok(html.includes('href="https://example.com"'));
 });
-const row=(observed,total,changes={})=>({product:'GPU',sku:'exact-sku',shop:'shop-a',condition:'新品・条件なし',currency:'JPY',url:'https://example.com/shop',observed,total,verdict:'wait',reason:'監視',...changes});
+const row=(observed,total,changes={})=>({product:'GPU',sku:'exact-sku',shop:'shop-a',condition:'新品・条件なし',currency:'JPY',url:'https://fixture-shop.example.jp/shop',observed,total,verdict:'wait',reason:'監視',...changes});
 test('30-day change compares same SKU shop and terms; no baseline means no invented percentage',()=>{
  const rows=[row('2026-09-01T08:00:00+09:00',100000),row('2026-09-03T08:00:00+09:00',10000,{sku:'other'}),row('2026-09-04T08:00:00+09:00',20000,{shop:'other'}),row('2026-10-04T08:00:00+09:00',90000)];
  const stats=priceStats(rows,'GPU');assert.equal(stats.change,-10);assert.equal(stats.low,90000);
