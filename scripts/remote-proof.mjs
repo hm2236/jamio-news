@@ -18,10 +18,13 @@ export function assertPublicReceipt(manifest, {commit, date, editionUrl, digest}
   if (manifest.contractVersion !== 1 || manifest.commit !== commit || item?.digest !== digest || item?.url !== editionUrl) throw new Error('Public publication manifest is stale or mismatched');
   if (!html.includes(`<link rel="canonical" href="${escape(editionUrl)}">`) || !html.includes(`<meta name="jamio-edition-digest" content="${digest}">`)) throw new Error('Public edition HTML is stale or mismatched');
 }
-export function confirmRemotePublication({validated, mergeResult, mergedPR, mainRun, manifest, html}) {
+export function confirmRemotePublication({validated, mergeResult, mergedPR, mainRun, manifest, html, deploymentProof}) {
   const commit = mergeResult.sha;
   if (validated.status !== 'validated' || mergeResult.merged !== true || !sha(commit) || mergedPR.number !== validated.pr || mergedPR.merged !== true || mergedPR.merge_commit_sha !== commit || mergedPR.head.sha !== validated.headSha) throw new Error('Merge did not publish the validated head');
   if (!(succeeded(mainRun, 'pages.yml', 'push') || succeeded(mainRun, 'pages.yml', 'workflow_dispatch')) || mainRun.head_sha !== commit || mainRun.head_branch !== 'main') throw new Error('Pages workflow for merged main SHA has not succeeded');
-  assertPublicReceipt(manifest, {...validated, commit}, html);
+  if (deploymentProof) {
+    const item = deploymentProof.editions?.find(e => e.date === validated.date), verified = deploymentProof.verifiedEdition;
+    if (deploymentProof.status !== 'receipt-verified' || deploymentProof.contractVersion !== 1 || deploymentProof.commit !== commit || item?.url !== validated.editionUrl || item?.digest !== validated.digest || verified?.date !== validated.date || verified?.url !== validated.editionUrl || verified?.digest !== validated.digest) throw new Error('Actions public receipt proof is stale or mismatched');
+  } else assertPublicReceipt(manifest, {...validated, commit}, html);
   return {status: 'published', date: validated.date, editionUrl: validated.editionUrl, commit, digest: validated.digest, workflowUrl: mainRun.html_url, pr: validated.pr, validatedHead: validated.headSha};
 }

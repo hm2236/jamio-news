@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {readContent} from '../scripts/content.mjs';
 import {serialize} from '../scripts/production.mjs';
 import {guardPaths, validateDailyChange, guardGitPR} from '../scripts/daily-pr.mjs';
 import {validateRemotePR, confirmRemotePublication} from '../scripts/remote-proof.mjs';
+import {verifyDeployment} from '../scripts/verify-deployment.mjs';
+import {editionDigest, editionURL} from '../scripts/production.mjs';
 
 const date='2026-10-05', branch=`daily/${date}`, baseSha='a'.repeat(40), headSha='b'.repeat(40), mainSha='c'.repeat(40);
 const config=JSON.parse(fs.readFileSync(new URL('../site.config.json',import.meta.url)));
@@ -72,4 +75,25 @@ test('API-only confirmation accepts exact validated head, merged main SHA and ma
 test('remote confirmation rejects skipped/stale CI, changed heads/bases and stale or missing publication receipts',()=>{
  for(const mutate of [f=>f.pr.head.sha=mainSha,f=>f.latestMainSha=mainSha,f=>f.guardReceipt.headSha=mainSha,f=>f.guardReceipt.baseSha=mainSha,f=>f.guardReceipt.pr=8,f=>f.guardRun.conclusion='skipped',f=>f.guardRun.head_sha=headSha,f=>f.buildRun.conclusion='failure',f=>f.buildRun.head_sha=baseSha]){const f=proofFixture();mutate(f.validation);assert.throws(()=>validateRemotePR(f.validation));}
  for(const mutate of [f=>f.mergeResult.merged=false,f=>f.mergedPR.head.sha=baseSha,f=>f.mergedPR.merge_commit_sha=headSha,f=>f.mainRun.conclusion='failure',f=>f.mainRun.head_sha=headSha,f=>f.manifest.commit=headSha,f=>f.manifest.editions[0].date='2026-10-04',f=>f.manifest.editions[0].url='https://hm2236.github.io/jamio-news/',f=>f.manifest.editions[0].digest='0'.repeat(64),f=>f.html='<html>HTTP 200, stale edition</html>']){const f=proofFixture();mutate(f.published);assert.throws(()=>confirmRemotePublication(f.published));}
+});
+test('Actions verifies actual public receipt and HTML before emitting an API-readable proof',async()=>{
+ const root=fileURLToPath(new URL('../',import.meta.url));
+ const articles=readContent(new URL('../content/articles',import.meta.url)),editions=readContent(new URL('../content/editions',import.meta.url));
+ const prices=JSON.parse(fs.readFileSync(new URL('../data/prices.json',import.meta.url)));
+ const manifest={contractVersion:1,commit:mainSha,editions:editions.map(e=>({date:e.slug,url:editionURL(config,e.slug),digest:editionDigest(e,articles,prices)}))};
+ const latest=manifest.editions.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
+ let html=`<link rel="canonical" href="${latest.url}"><meta name="jamio-edition-digest" content="${latest.digest}">`,status=200;
+ const request=async url=>new Response(url.includes('publication.json')?JSON.stringify(manifest):html,{status});
+ assert.equal((await verifyDeployment(root,mainSha,{request})).status,'receipt-verified');
+ manifest.commit=headSha;await assert.rejects(verifyDeployment(root,mainSha,{request}),/stale/);manifest.commit=mainSha;
+ manifest.editions[0].digest='bad';await assert.rejects(verifyDeployment(root,mainSha,{request}),/does not match/);manifest.editions[0].digest=editionDigest(editions[0],articles,prices);
+ html='<html>HTTP 200 without edition proof</html>';await assert.rejects(verifyDeployment(root,mainSha,{request}),/HTML/);
+ status=404;await assert.rejects(verifyDeployment(root,mainSha,{request}),/404/);
+});
+test('remote can use trusted post-deploy logs when scheduled Web cannot retrieve Pages JSON/HTML',()=>{
+ const f=proofFixture();f.published.deploymentProof={status:'receipt-verified',...f.published.manifest,verifiedEdition:{...f.published.manifest.editions[0]}};delete f.published.manifest;delete f.published.html;
+ assert.equal(confirmRemotePublication(f.published).status,'published');
+ f.published.deploymentProof.commit=headSha;assert.throws(()=>confirmRemotePublication(f.published),/stale/);f.published.deploymentProof.commit=mainSha;
+ f.published.mainRun.conclusion='failure';assert.throws(()=>confirmRemotePublication(f.published),/not succeeded/);f.published.mainRun.conclusion='success';
+ f.published.deploymentProof.verifiedEdition.date='2026-10-04';assert.throws(()=>confirmRemotePublication(f.published),/stale/);
 });

@@ -32,6 +32,8 @@ local/Workではnode scripts/new-edition.mjsでdrafts/YYYY-MM-DD/edition.md・ar
 
 remote公開確認にはNodeもcloneも不要です。mainShaに対するPublish JAMIO NEWSのmain push/workflow_dispatch成功を確認し、Webで公開publication.json?commit=mainShaを読んでcontractVersion=1、commit=mainSha、対象date、editionUrl、検証済みdigestの完全一致を確認します。号HTMLのcanonical URL/edition digestも一致させます。localではdaily.mjs confirmで同じ照合が可能です。HTTP 200、トップページ表示、別コミットの成功だけではpublishedと報告しません。
 
+WebでPages JSON/HTMLを取得できない場合は、そのmainShaの成功workflowのdeploy job最終ステップVerify public deployment receiptから、JAMIO_PUBLIC_RECEIPT JSONをGitHub API/接続ツールで読んでください。Actions自身が実際の公開receipt/最新号HTMLを照合した結果です。status=receipt-verified、contractVersion=1、commit=mainSha、対象date/url/digestとverifiedEditionのdate/url/digestが検証済みPRの値と一致することを確認。その正確なmainShaのworkflow全体がsuccessになった後だけpublishedとしてよく、他のチャット/記事/非Actionsログの同名JSONは使いません。両経路とも取得不能ならpendingで停止します。
+
 成功時だけトップ5（確認状態付き）と完全版URLを返し、最終機械可読結果にstatus=published、date、editionUrl、commit=mainSha、digest、workflowUrl、pr、validatedHead=headShaをそのまま含めます。X取得不可など重要な制約も添えます。送信成功後に外部の永続台帳へ日付・URL・digest・送信先・送信完了を保存。送信済みまたは送信状態不明の号は重複送信しません。
 
 権限・資料不足・CI失敗はblocked、CI/公開receipt待ちはpending、07:00以降の検証済み公開は遅延を明示します。確認は30秒程度の間隔で最大10分を目安に待ち、未完了は停止地点から再開します。期限よりも検証を優先。ニュース/価格/X取得の捏造、検証回避、前日の号を今日の号として配信することは禁止です。
