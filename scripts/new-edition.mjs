@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const date=process.argv[2] || new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date());
+if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('日付は YYYY-MM-DD');
+const parsed=new Date(date+'T12:00:00+09:00');
+if(!Number.isFinite(parsed.getTime()) || new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(parsed)!==date)throw new Error('無効な日付');
+const folder=path.join(root,'drafts',date);fs.mkdirSync(folder,{recursive:true});
+const metadata={title:`じゃみお朝刊 — ${date}`,kind:'daily',published:`${date}T08:00:00+09:00`,top5:[],hero:'',articles:[],deals:[]};
+fs.writeFileSync(path.join(folder,`${date}.md`),`---\n${JSON.stringify(metadata,null,2)}\n---\n\nここに今日の要点。確認した5記事のslugをtop5に記載してください。\n`,{flag:'wx'});
+const article={title:'記事タイトル',summary:'じゃみおへの影響を1〜2文で',category:'ai',tags:['OpenAI'],status:'unconfirmed',kind:'news',published:`${date}T08:00:00+09:00`,verificationNote:'投稿者の主張と裏取り済みの点、未確認の点を記載',sources:[]};
+fs.writeFileSync(path.join(folder,'article-template.md'),`---\n${JSON.stringify(article,null,2)}\n---\n\n## 何が起きたか\n\n## なぜ重要か\n\n## じゃみお目線\n\n## 確認済み / 未確認の点\n`,{flag:'wx'});
+console.log(`Draft created: ${folder}\n草稿は公開対象外です。検証後、記事をcontent/articles、朝刊をcontent/editionsへ移してください。`);

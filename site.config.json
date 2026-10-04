@@ -1,0 +1,15 @@
+{
+  "title": "JAMIO NEWS",
+  "subtitle": "じゃみおの好奇心に、毎朝の一面を。",
+  "url": "https://hm2236.github.io/jamio-news/",
+  "timezone": "Asia/Tokyo",
+  "categories": {
+    "ai": "AI / テック",
+    "hardware": "PC・半導体",
+    "deals": "価格ウォッチ / セール",
+    "local": "鹿児島・いちき串木野",
+    "life": "経済・生活"
+  },
+  "topics": ["OpenAI", "Anthropic", "Google / Gemini", "NVIDIA", "AMD", "Intel", "ローカルLLM", "AIコーディング", "自動実装", "GPU", "大容量RAM", "SSD", "Strix Halo", "GB10 / DGX Spark / RTX Spark"],
+  "weather": { "latitude": 31.72, "longitude": 130.27, "label": "いちき串木野", "timezone": "Asia/Tokyo" }
+}
