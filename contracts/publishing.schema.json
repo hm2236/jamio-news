@@ -83,7 +83,17 @@
     }
   },
   "x-handoff": {
-    "repository": "hm2236/jamio-news", "timezone": "Asia/Tokyo", "targetTime": "08:00",
+    "repository": "hm2236/jamio-news", "timezone": "Asia/Tokyo", "startTime": "06:00", "targetTime": "07:00",
+    "modeSelection": "Use local/work when Node and clone are usable; automatically use remote/scheduled when Web plus GitHub read/write/PR/merge/Actions APIs are available but local execution is not. Never require a clone in remote mode.",
+    "remote": {
+      "branch": "daily/YYYY-MM-DD",
+      "writes": ["content/articles/YYYY-MM-DD-*.md (add only)", "content/editions/YYYY-MM-DD.md (add only)", "data/prices.json (append observations only)"],
+      "authoritativeCI": ["Daily publication guard: trusted main validates the whole base/head diff and package", "Publish JAMIO NEWS: node scripts/validate.mjs; node --test; node scripts/build.mjs on exact PR head"],
+      "validationReceipt": "JAMIO_DAILY_VALIDATION JSON in successful guard job logs: contractVersion, pr, baseSha, headSha, date, editionUrl, digest. guard-passed alone is not complete CI success.",
+      "merge": "Require both successful workflows for recorded head/base, re-read PR and main, then merge API with sha=validated head. Record the merge response sha and merged PR merge_commit_sha.",
+      "confirmation": "Require successful Publish JAMIO NEWS for merged main SHA plus public publication.json contractVersion=1 and exact commit/date/url/digest from validated guard receipt; also check edition HTML canonical/digest. No local Node required.",
+      "deadline": "07:00 JST is a target, never permission to skip validation or claim unconfirmed publication. Report blocked/pending/late explicitly."
+    },
     "draftFiles": ["drafts/YYYY-MM-DD/edition.md", "drafts/YYYY-MM-DD/articles/YYYY-MM-DD-<slug>.md", "drafts/YYYY-MM-DD/prices.json"],
     "publishedFiles": ["content/editions/YYYY-MM-DD.md", "content/articles/YYYY-MM-DD-<slug>.md", "data/prices.json"],
     "commands": ["node scripts/new-edition.mjs YYYY-MM-DD", "node scripts/daily.mjs check drafts/YYYY-MM-DD", "node scripts/daily.mjs apply drafts/YYYY-MM-DD", "node scripts/validate.mjs", "node --test", "node scripts/build.mjs", "node scripts/daily.mjs confirm YYYY-MM-DD <merged-main-sha>"],

@@ -8,7 +8,7 @@
 - 確認済み事実 / 報道 / 未確認情報の表示。出典・検証メモ・訂正履歴。
 - 価格履歴：現在の観測価格、30日前比、観測最安、買い判断。
 
-**初期コンテンツは2026-10-04の開設号（編集ガイド）です。最新ニュースや実売価格は未収集。自動収集・朝8時のチャット配信は未有効化です。** 天気だけは閲覧時に外部APIから取得します。
+**初期コンテンツは2026-10-04の開設号（編集ガイド）です。最新ニュースや実売価格は未収集。自動収集・朝刊のチャット配信は未有効化です。** 天気だけは閲覧時に外部APIから取得します。
 
 ## ローカルで確認
 
@@ -43,7 +43,9 @@ node scripts/build.mjs
 
 `check` は無変更、`apply` は全件検証後に記事・号を追加し価格を追記します。既存の同日号と一致する再実行は `unchanged`、相違があれば停止します。出力はJSONで、`applied` はローカル反映のみです。PRを公開・CI確認・マージ後、mainを取得して `node scripts/daily.mjs confirm YYYY-MM-DD <マージ後mainの40桁SHA>` を実行し、`published` と `editionUrl` が返って初めて公開完了です。
 
-**機械可読契約**：[contracts/publishing.schema.json](contracts/publishing.schema.json)。必須項目、独自format、参照・出典の追加検証、[08:00 JSTの具体的な引き継ぎ](docs/morning-pipeline.md)、[実行プロンプト](docs/chatgpt-morning-prompt.md)をセットで使用してください。日刊号はビルド・CIでも同じ契約を検証します。
+**機械可読契約**：[contracts/publishing.schema.json](contracts/publishing.schema.json)。必須項目、独自format、参照・出典の追加検証、[06:00制作開始・07:00公開目標の引き継ぎ](docs/morning-pipeline.md)、[実行プロンプト](docs/chatgpt-morning-prompt.md)をセットで使用してください。日刊号はビルド・CIでも同じ契約を検証します。
+
+**remote/scheduled**：予定タスクにWeb＋GitHub APIがあり、clone/Nodeが使えない場合は自動的にこのモードを選択します。`daily/YYYY-MM-DD` だけに最終記事・号と実価格観測をAPIで書き、信頼済みmainの **Daily publication guard** と、正確なPR headの **Publish JAMIO NEWS** が成功してから期待head SHA付きでマージ。mainのPages成功と公開receiptのSHA/date/URL/digestをAPI/Webで照合すれば、ローカル実行は不要です。日刊PRはコード・契約・CI・既存記事を変更できず、価格履歴は追記だけです。[詳細なAPI手順](docs/morning-pipeline.md#remotescheduledのapi手順)。
 
 記事メタデータ例：
 
@@ -87,6 +89,6 @@ GitHub Settings → Pages → Build and deployment → Source を **GitHub Actio
 
 公式参考：[GitHub Pagesのカスタムワークフロー](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Open-Meteo Forecast API](https://open-meteo.com/en/docs)。天気の地域は `public/assets/app.js` のAPI URLで設定します。
 
-## 毎朝8時への引き継ぎ
+## 毎朝06:00開始・07:00公開への引き継ぎ
 
 [運用手順](docs/morning-pipeline.md)、[ChatGPTへ渡すプロンプト](docs/chatgpt-morning-prompt.md)、[編集方針](docs/editorial-policy.md)を参照。草稿・検証・反映・公開確認の道具は実装済みです。収集・スケジュール・チャット通知を自動実行する接続は、このリポジトリでは有効化していません。
