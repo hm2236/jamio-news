@@ -5,7 +5,8 @@ import {readContent,validate,markdown,priceStats,validatePrices} from '../script
 const config=JSON.parse(fs.readFileSync(new URL('../site.config.json',import.meta.url)));
 const articles=readContent(new URL('../content/articles',import.meta.url));
 const editions=readContent(new URL('../content/editions',import.meta.url));
-const make=(changes={})=>({...articles[0],slug:'test-news',kind:'news',status:'verified',sources:[{title:'公式',type:'official',url:'https://example.com/news',checked:'2026-10-04T08:00:00+09:00'}],...changes});
+const fixtureArticle=articles.find(article=>article.kind==='guide') ?? articles[0];
+const make=(changes={})=>({...fixtureArticle,slug:'test-news',kind:'news',status:'verified',sources:[{title:'公式',type:'official',url:'https://example.com/news',checked:'2026-10-04T08:00:00+09:00'}],...changes});
 test('published content meets editorial requirements',()=>validate(articles,editions,config));
 test('X alone cannot establish a verified fact, even if mislabeled official',()=>{
  assert.throws(()=>validate([make({sources:[{title:'X',type:'official',url:'https://x.com/example/status/123',checked:'2026-10-04T08:00:00+09:00'}],verificationNote:'裏取りなし'})],[],config),/一次資料/);
