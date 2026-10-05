@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hm2236.github.io/jamio-news/contracts/publishing.schema.json",
   "title": "JAMIO NEWS daily publishing contract v1",
-  "description": "Normalized draft package. Markdown uses JSON front matter; slug and body are derived from the file. Structural validation is not fact verification.",
+  "description": "Normalized draft package. Markdown uses JSON front matter; slug and body are derived from the file. Structural validation is not fact verification. Qualified edition slugs require matching date, variant and priceKeys; legacy metadata is unchanged.",
   "type": "object",
   "additionalProperties": false,
   "required": ["date", "edition", "articles", "priceObservations"],
@@ -34,7 +34,10 @@
       "type": "object", "additionalProperties": false,
       "required": ["slug", "title", "kind", "published", "top5", "hero", "articles", "deals", "production", "body"],
       "properties": {
-        "slug": {"type": "string", "format": "date"},
+        "slug": {"type": "string", "format": "edition-slug"},
+        "date": {"type": "string", "format": "date"},
+        "variant": {"enum": ["morning", "noon", "evening"]},
+        "priceKeys": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
         "title": {"$ref": "#/$defs/text"}, "kind": {"const": "daily"},
         "published": {"$ref": "#/$defs/jst"},
         "top5": {"$ref": "#/$defs/slugs", "minItems": 5, "maxItems": 5},
@@ -86,20 +89,20 @@
     "repository": "hm2236/jamio-news", "timezone": "Asia/Tokyo", "startTime": "06:00", "targetTime": "07:00",
     "modeSelection": "Use local/work when Node and clone are usable; automatically use remote/scheduled when Web plus GitHub read/write/PR/merge/Actions APIs are available but local execution is not. Never require a clone in remote mode.",
     "remote": {
-      "branch": "daily/YYYY-MM-DD",
-      "writes": ["content/articles/YYYY-MM-DD-*.md (add only)", "content/editions/YYYY-MM-DD.md (add only)", "data/prices.json (append observations only)"],
+      "branch": "daily/<edition-slug>",
+      "writes": ["content/articles/<edition-slug>-*.md (add only)", "content/editions/<edition-slug>.md (add only)", "data/prices.json (append only; preserve every prior edition digest)"],
       "authoritativeCI": ["Daily publication guard: trusted main validates the whole base/head diff and package", "Publish JAMIO NEWS: node scripts/validate.mjs; node --test; node scripts/build.mjs on exact PR head"],
-      "validationReceipt": "JAMIO_DAILY_VALIDATION JSON in successful guard job logs: contractVersion, pr, baseSha, headSha, date, editionUrl, digest. guard-passed alone is not complete CI success.",
+      "validationReceipt": "JAMIO_DAILY_VALIDATION JSON in successful guard job logs: contractVersion, pr, baseSha, headSha, date, slug, variant, editionUrl, digest. guard-passed alone is not complete CI success.",
       "merge": "Require both successful workflows for recorded head/base, re-read PR and main, then merge API with sha=validated head. Record the merge response sha and merged PR merge_commit_sha.",
       "confirmation": "Require successful Publish JAMIO NEWS for merged main SHA plus public publication.json contractVersion=1 and exact commit/date/url/digest from validated guard receipt; also check edition HTML canonical/digest. If direct Web cannot retrieve Pages, read JAMIO_PUBLIC_RECEIPT from that exact successful main deployment job: receipt-verified and matching commit/editions/verifiedEdition. Actions fetched and verified the actual public receipt/HTML. No local Node required.",
       "deadline": "07:00 JST is a target, never permission to skip validation or claim unconfirmed publication. Report blocked/pending/late explicitly."
     },
     "draftFiles": ["drafts/YYYY-MM-DD/edition.md", "drafts/YYYY-MM-DD/articles/YYYY-MM-DD-<slug>.md", "drafts/YYYY-MM-DD/prices.json"],
     "publishedFiles": ["content/editions/YYYY-MM-DD.md", "content/articles/YYYY-MM-DD-<slug>.md", "data/prices.json"],
-    "commands": ["node scripts/new-edition.mjs YYYY-MM-DD", "node scripts/daily.mjs check drafts/YYYY-MM-DD", "node scripts/daily.mjs apply drafts/YYYY-MM-DD", "node scripts/validate.mjs", "node --test", "node scripts/build.mjs", "node scripts/daily.mjs confirm YYYY-MM-DD <merged-main-sha>"],
+    "commands": ["node scripts/new-edition.mjs YYYY-MM-DD", "node scripts/daily.mjs check drafts/YYYY-MM-DD", "node scripts/daily.mjs apply drafts/YYYY-MM-DD", "node scripts/validate.mjs", "node --test", "node scripts/build.mjs", "node scripts/daily.mjs confirm <edition-slug> <merged-main-sha>"],
     "failure": "Nonzero exit and JSON status=failed. Do not merge or claim publication. No fabricated news/prices/X retrieval; fewer than five sourced stories means no edition.",
-    "idempotency": "Identical same-day package is unchanged; differing content or observations is a conflict. Corrections require a separate reviewed PR with updated/corrections.",
+    "idempotency": "Identical same-edition package is unchanged; differing content or observations is a conflict. Explicit morning/noon/evening editions may coexist with a legacy issue. Every prior digest must remain unchanged. Corrections require a separate reviewed PR with updated/corrections.",
     "success": "JSON status=published, date, editionUrl, commit, digest, workflowUrl; only after successful Pages workflow for that main SHA and matching public publication.json and edition HTML.",
-    "editionUrl": "https://hm2236.github.io/jamio-news/editions/YYYY-MM-DD/"
+    "editionUrl": "https://hm2236.github.io/jamio-news/editions/<edition-slug>/"
   }
 }

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {editionIdentity, newestEdition, receiptIdentityMatches} from './edition.mjs';
 import {fileURLToPath} from 'node:url';
 import {loadRepository, editionDigest, editionURL} from './production.mjs';
 import {assertPublicReceipt} from './remote-proof.mjs';
@@ -14,14 +15,15 @@ export async function verifyDeployment(root, commit, {request = fetch} = {}) {
   const manifest = await (await get(new URL(`publication.json?commit=${commit}`, config.url).href)).json();
   if (manifest.contractVersion !== 1 || manifest.commit !== commit || manifest.editions?.length !== editions.length) throw new Error('Public deployment receipt is stale or incomplete');
   for (const edition of editions) {
-    const item = manifest.editions.find(e => e.date === edition.slug);
+    const matches = manifest.editions.filter(e => receiptIdentityMatches(e, editionIdentity(edition.slug)));
+    const item = matches.length === 1 ? matches[0] : null;
     if (item?.url !== editionURL(config, edition.slug) || item?.digest !== editionDigest(edition, articles, prices)) throw new Error('Public edition receipt does not match this deployed main');
   }
-  const latest = editions.slice().sort((a,b) => b.slug.localeCompare(a.slug))[0];
+  const latest = editions.slice().sort(newestEdition)[0];
   const editionUrl = editionURL(config, latest.slug), digest = editionDigest(latest, articles, prices);
   const html = await (await get(`${editionUrl}?commit=${commit}`)).text();
-  assertPublicReceipt(manifest, {commit, date: latest.slug, editionUrl, digest}, html);
-  return {status: 'receipt-verified', contractVersion: 1, commit, editions: manifest.editions, verifiedEdition: {date: latest.slug, url: editionUrl, digest}};
+  assertPublicReceipt(manifest, {commit, ...editionIdentity(latest.slug), editionUrl, digest}, html);
+  return {status: 'receipt-verified', contractVersion: 1, commit, editions: manifest.editions, verifiedEdition: {...editionIdentity(latest.slug), url: editionUrl, digest}};
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = fileURLToPath(new URL('../', import.meta.url));

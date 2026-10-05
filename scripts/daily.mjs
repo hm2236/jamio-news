@@ -8,10 +8,10 @@ try {
   let result;
   if (command === 'check' && value) {
     const plan = planDraft(root, value);
-    result = {status: 'valid', date: plan.date, editionUrl: plan.editionUrl, digest: plan.digest, files: plan.writes.map(w => w.file)};
+    result = {status: 'valid', date: plan.date, slug:plan.slug, variant:plan.variant, editionUrl: plan.editionUrl, digest: plan.digest, files: plan.writes.map(w => w.file)};
   } else if (command === 'apply' && value) result = applyDraft(root, value);
   else if (command === 'confirm') result = await confirmPublication(root, value, commit);
-  else throw new Error('Usage: daily.mjs check|apply drafts/YYYY-MM-DD OR confirm YYYY-MM-DD <merged-main-sha>');
+  else throw new Error('Usage: daily.mjs check|apply drafts/<edition-slug> OR confirm <edition-slug> <merged-main-sha>');
   console.log(JSON.stringify(result));
 } catch (error) {
   console.error(JSON.stringify({status: 'failed', error: error.message}));
