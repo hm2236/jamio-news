@@ -18,6 +18,8 @@ test('every generated internal link works beneath the GitHub Pages repository pa
  const home=fs.readFileSync(path.join(dir,'index.html'),'utf8');
  assert.ok(home.includes('data-state="unrequested"'));
  assert.ok(home.includes('id="weather-location"'));
+ assert.ok(home.includes('今日の鹿児島県いちき串木野市'));
+ assert.ok(home.includes('地名取得のため取得座標をBigDataCloudへ送信'));
  assert.ok(home.includes('概略の位置をOpen-Meteoへ送信'));
  assert.ok(home.includes('天気の取得と位置情報の利用にはJavaScriptが必要'));
  assert.ok(fs.existsSync(path.join(dir,'assets/weather.js')));
