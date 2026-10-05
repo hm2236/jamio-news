@@ -12,12 +12,13 @@ class Element{
  addEventListener(type,callback){this.listeners[type]=callback;}
  get text(){return this.textContent+this.children.map(el=>el.text).join(' ');}
 }
-function setup({geolocation=true,request=async()=>response()}={}){
+const place={lookupSource:'coordinates',countryCode:'JP',countryName:'日本',principalSubdivision:'東京都',city:'新宿区',locality:'西新宿'};
+function setup({geolocation=true,request=async()=>response(),reverse=async()=>({ok:true,json:async()=>place})}={}){
  const elements=Object.fromEntries(['weather-data','weather-title','weather-location-status','weather-location'].map(id=>[id,new Element()]));
  const calls=[];let success,failure,options;
  const document={querySelector:selector=>elements[selector.slice(1)]??null,createElement:()=>new Element()};
  const navigator=geolocation?{geolocation:{getCurrentPosition:(s,f,o)=>{success=s;failure=f;options=o;}}}:{};
- initWeather({document,navigator,fetch:(url,opts)=>{calls.push({url:new URL(url),options:opts});return request(url,opts);},now});
+ initWeather({document,navigator,fetch:(url,opts)=>{calls.push({url:new URL(url),options:opts});return new URL(url).hostname==='api.bigdatacloud.net'?reverse(url,opts):request(url,opts);},now});
  return {elements,calls,get options(){return options;},allow:(latitude=35.689487,longitude=139.691706)=>success({coords:{latitude,longitude}}),fail:code=>failure({code}),state:()=>elements['weather-location-status'].dataset.state,text:()=>Object.values(elements).map(e=>e.text).join(' '),retry:()=>elements['weather-location'].listeners.click()};
 }
 
@@ -31,13 +32,15 @@ test('first visit requests permission while showing the existing fallback',async
  assert.equal(app.calls[0].url.searchParams.get('latitude'),'31.72');
 });
 test('granted position fetches an approximate point without exposing coordinates',async()=>{
- const app=setup();app.allow();await tick();assert.equal(app.state(),'granted');assert.match(app.text(),/今日の現在地付近/);
+ const app=setup();app.allow();await tick();assert.equal(app.state(),'granted');assert.match(app.text(),/今日の東京都 新宿区/);assert.doesNotMatch(app.text(),/西新宿/);
+ const lookup=app.calls[1];assert.equal(lookup.url.origin,'https://api.bigdatacloud.net');assert.equal(lookup.url.searchParams.get('localityLanguage'),'ja');assert.equal(lookup.url.searchParams.get('latitude'),'35.689487');
+ for(const {options} of app.calls){assert.equal(options.cache,'no-store');assert.equal(options.credentials,'omit');assert.equal(options.referrerPolicy,'no-referrer');assert.ok(options.signal instanceof AbortSignal);}
  const call=app.calls.at(-1);assert.equal(call.url.origin,'https://api.open-meteo.com');assert.equal(call.url.searchParams.get('latitude'),'35.69');assert.equal(call.url.searchParams.get('longitude'),'139.69');assert.equal(call.url.searchParams.get('timezone'),'auto');
  assert.equal(call.options.cache,'no-store');assert.equal(call.options.credentials,'omit');assert.equal(call.options.referrerPolicy,'no-referrer');
  assert.doesNotMatch(app.text(),/35\.69|139\.69/);assert.equal(app.elements['weather-location'].disabled,false);
 });
 for(const [code,state]of [[1,'denied'],[2,'failed'],[3,'failed']])test(`position error ${code} retains fallback and permits explicit retry`,async()=>{
- const app=setup();app.fail(code);await tick();assert.equal(app.state(),state);assert.equal(app.calls.length,1);assert.match(app.text(),/今日のいちき串木野/);
+ const app=setup();app.fail(code);await tick();assert.equal(app.state(),state);assert.equal(app.calls.length,1);assert.match(app.text(),/今日の鹿児島県いちき串木野市/);
  app.retry();assert.equal(app.state(),'pending');app.allow();await tick();assert.equal(app.state(),'granted');
 });
 test('unsupported geolocation uses fallback without a request',async()=>{
@@ -61,7 +64,7 @@ for(const kind of ['http','network','stale','malformed','timezone'])test(`curren
   if(kind==='timezone')return response('invalid/timezone');
   return {ok:true,json:async()=>({timezone:'Asia/Tokyo',daily:{}})};
  }});
- app.allow();await tick();assert.equal(app.state(),'weather-failed');assert.match(app.text(),/今日のいちき串木野/);assert.match(app.text(),/28° \/ 19°/);assert.equal(app.calls.length,3);
+ app.allow();await tick();assert.equal(app.state(),'weather-failed');assert.match(app.text(),/今日の鹿児島県いちき串木野市/);assert.match(app.text(),/28° \/ 19°/);assert.equal(app.calls.length,4);
 });
 test('when all weather requests fail, display unavailable and the fallback region',async()=>{
  const app=setup({request:async()=>{throw new Error('offline');}});app.allow();await tick();assert.equal(app.state(),'weather-failed');assert.match(app.text(),/今日の予報を取得できませんでした/);assert.match(app.text(),/気象庁/);assert.doesNotMatch(app.text(),/28°/);
@@ -69,8 +72,39 @@ test('when all weather requests fail, display unavailable and the fallback regio
 test('a late fallback response cannot overwrite the current forecast',async()=>{
  let finish;
  const app=setup({request:url=>new URL(url).searchParams.get('timezone')==='auto'?Promise.resolve(response()):new Promise(resolve=>{finish=resolve;})});
- app.allow();await tick();finish(response('Asia/Tokyo','2026-10-04'));await tick();assert.equal(app.state(),'granted');assert.match(app.text(),/今日の現在地付近/);assert.match(app.text(),/28° \/ 19°/);
+ app.allow();await tick();finish(response('Asia/Tokyo','2026-10-04'));await tick();assert.equal(app.state(),'granted');assert.match(app.text(),/今日の東京都 新宿区/);assert.match(app.text(),/28° \/ 19°/);
 });
 test('late geolocation callbacks after an error cannot switch the region',async()=>{
  const app=setup();app.fail(3);app.allow();await tick();assert.equal(app.state(),'failed');assert.equal(app.calls.length,1);
+});
+
+for(const kind of ['http','network','timeout','json','empty','region-only','ip','malformed'])test(`reverse geocoding ${kind} failure uses the named fallback without requesting current weather`,async()=>{
+ const app=setup({reverse:async()=>{
+  if(kind==='http')return {ok:false};
+  if(kind==='network'||kind==='timeout')throw new DOMException('unavailable',kind==='timeout'?'TimeoutError':'NetworkError');
+  if(kind==='json')return {ok:true,json:async()=>{throw new SyntaxError('invalid');}};
+  const data=kind==='empty'?{}:kind==='region-only'?{...place,city:'',locality:''}:kind==='ip'?{...place,lookupSource:'ipGeolocation'}:{...place,city:123,locality:null,localityInfo:{administrative:{}}};
+  return {ok:true,json:async()=>data};
+ }});
+ app.allow();await tick();assert.equal(app.state(),'geocoding-failed');assert.match(app.text(),/今日の鹿児島県いちき串木野市/);assert.match(app.text(),/28° \/ 19°/);assert.equal(app.elements['weather-location'].disabled,false);
+ assert.equal(app.calls.length,3);assert.ok(app.calls.filter(c=>c.url.hostname==='api.open-meteo.com').every(c=>c.url.searchParams.get('latitude')==='31.72'));
+});
+for(const [data,name] of [
+ [{...place,principalSubdivision:'鹿児島県',city:'いちき串木野市'},'鹿児島県 いちき串木野市'],
+ [{...place,city:'',locality:'串木野',localityInfo:{administrative:[{name:'鹿児島県'},{name:'いちき串木野市'}]},principalSubdivision:'鹿児島県'},'鹿児島県 いちき串木野市'],
+ [{...place,city:'',locality:'伊奈町',principalSubdivision:'埼玉県'},'埼玉県 伊奈町'],
+ [{...place,countryCode:'US',countryName:'アメリカ合衆国',principalSubdivision:'カリフォルニア州',city:'ロサンゼルス'},'アメリカ合衆国 カリフォルニア州 ロサンゼルス'],
+ [{...place,lookupSource:'reverseGeocoding'},'東京都 新宿区']
+])test(`place labels prefer a municipality: ${name}`,async()=>{
+ const app=setup({reverse:async()=>({ok:true,json:async()=>data})});app.allow();await tick();assert.equal(app.state(),'granted');assert.match(app.text(),new RegExp(`今日の${name}`));
+});
+test('a pending lookup cannot be duplicated by retry or a late geolocation callback',async()=>{
+ let finish;const app=setup({reverse:()=>new Promise(resolve=>{finish=resolve;})});
+ app.allow();app.retry();app.allow();await tick();assert.equal(app.state(),'pending');assert.equal(app.calls.length,2);assert.match(app.text(),/鹿児島県いちき串木野市/);
+ finish({ok:true,json:async()=>place});await tick();assert.equal(app.state(),'granted');assert.equal(app.calls.length,3);
+ app.retry();app.fail(1);await tick();assert.equal(app.state(),'denied');assert.match(app.text(),/今日の鹿児島県いちき串木野市/);
+});
+test('fallback remains named when reverse lookup and fallback weather both fail',async()=>{
+ const app=setup({reverse:async()=>{throw new Error('offline');},request:async()=>{throw new Error('offline');}});app.allow();await tick();
+ assert.equal(app.state(),'geocoding-failed');assert.match(app.text(),/今日の鹿児島県いちき串木野市/);assert.match(app.text(),/予報を取得できませんでした/);assert.doesNotMatch(app.text(),/28°|35\.689/);
 });

@@ -103,9 +103,9 @@ GitHub Settings → Pages → Build and deployment → Source を **GitHub Actio
 
 公式参考：[GitHub Pagesのカスタムワークフロー](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Open-Meteo Forecast API](https://open-meteo.com/en/docs)。天気の処理は `public/assets/weather.js` にあります。
 
-初回のトップ閲覧時にブラウザのGeolocation APIで位置情報の許可を要求し、取得できた場合は現在地付近の予報に切り替えます。許可待ち・拒否・未対応・取得失敗時はいちき串木野の予報を維持し、状態を表示します。「現在地を再取得」で再試行できます（拒否を解除するにはブラウザ設定の変更が必要な場合があります）。現在地の天気取得に失敗した場合もいちき串木野へ戻ります。フォールバックの取得失敗時は取得不可と気象庁リンクを表示します。JavaScript無効時は天気取得も位置情報要求も行いません。
+初回のトップ閲覧時にブラウザのGeolocation APIで位置情報の許可を要求し、座標と地名を取得できた場合は地名と現在地付近の予報を表示します。許可待ち・拒否・未対応・取得失敗・逆ジオコーディング失敗・現在地の天気取得失敗時は「鹿児島県いちき串木野市」の地名と予報を表示します。「現在地を再取得」で再試行できます（拒否の解除にはブラウザ設定変更が必要な場合があります）。既定地点の天気も取得できないときは同じ地名のまま取得不可と気象庁リンクを表示し、古い予報や架空の数値は表示しません。JavaScript無効時は天気取得も位置情報要求も行いません。
 
-位置情報は表示のためだけに使い、小数点以下2桁に丸めた概略座標をブラウザから既存のOpen-Meteo公開APIへ直接送信します。サイトのサーバー・リポジトリ・ブラウザストレージに保存せず、画面やページURLにも露出させません。新規の有料API・秘密鍵は不要です。現在地の予報日付はAPIが返す地点のタイムゾーンで今日か確認し、取得時刻は従来どおりJSTで表示します。外部APIの取扱いは[Open-Meteoのプライバシーポリシー](https://open-meteo.com/en/privacy)を参照してください。
+位置情報は天気と地名の表示のためだけに使います。小数点以下2桁に丸めた概略座標をOpen-Meteoへ、地名取得のためブラウザが取得した座標を[BigDataCloudの無料クライアント用API](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api)へ、ブラウザから直接送信します。地名は日本語の都道府県・市区町村を優先します。許可を得た現在地のみを逆ジオコーディングし、既定地点の逆ジオコーディングやIPによる代替測位は行いません。当サイトのサーバー・リポジトリ・ログ・ブラウザストレージには保存せず、画面やページURLにも座標を表示しません。外部APIには通信元IPも伝わります。BigDataCloudは匿名化した座標とIPの組をサービス精度改善に利用すると説明しています。外部APIの取扱いは[Open-Meteoのプライバシーポリシー](https://open-meteo.com/en/privacy)と[BigDataCloudの説明](https://www.bigdatacloud.com/docs/article/why-is-reverse-geocoding-api-free)を参照してください。新規の有料API・秘密鍵・依存パッケージは不要です。 現在地の予報日付は地点のタイムゾーンで今日か確認し、取得時刻はJSTで表示します。
 
 ## 毎朝06:00開始・07:00公開への引き継ぎ
 
