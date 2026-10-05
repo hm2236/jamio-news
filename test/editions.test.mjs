@@ -93,6 +93,11 @@ test('variant builds select published order and keep both URLs in archive, RSS, 
   const important=home.split('<section class="day-news">')[1].split('</section>')[0];
   for(const a of [...morning.articles,...f.articles])assert.ok(important.includes(`/articles/${a.slug}/`));
   const archive=read('archive/index.html');assert.equal((archive.match(/<section class="archive-day">/g)??[]).length,2);
+  assert.ok(archive.includes('id="month-2026-10"'));
+  assert.ok(read(`editions/${slug}/index.html`).includes('aria-label="前後の号"'));
+  const article=read(`articles/${f.articles[0].slug}/index.html`);
+  assert.ok(article.includes(`${date} · 夕刊を読む`));
+  assert.ok(article.includes(`href="/jamio-news/editions/${slug}/"`));
   const day=archive.split(`datetime="${date}"`)[1].split('</section>')[0];
   for(const id of [date,slug,`${date}-morning`])assert.ok(day.includes(`/editions/${id}/`));
   assert.ok(read(`editions/${slug}/index.html`).includes(`>${date}</time> 夕刊`));
@@ -129,7 +134,8 @@ test('a newer morning with no evening displays only morning and leaves previous 
   execFileSync(process.execPath,['scripts/build.mjs'],{cwd:root,env:{...process.env,GITHUB_SHA:commit}});
   const home=fs.readFileSync(path.join(root,'dist/index.html'),'utf8');
   assert.ok(home.includes('2026.10.06 · 朝刊'));
-  assert.equal((home.match(/data-edition-switch=/g)??[]).length,1);
+  const switcher=home.split('<nav class="edition-switch"')[1].split('</nav>')[0];
+  assert.equal((switcher.match(/data-edition-switch=/g)??[]).length,1);
   assert.ok(home.includes('data-edition-switch="2026-10-06-morning">朝刊</a>'));
   assert.equal(home.includes('夕刊なし'),false);assert.equal(home.includes('今日の重要ニュース'),false);
   assert.equal(home.includes(`data-edition-panel="${slug}"`),false);

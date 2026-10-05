@@ -8,3 +8,151 @@
 @media(prefers-reduced-motion:no-preference){a,button{transition:color .15s,background .15s}}
 .issue-heading{padding:30px 0 0}.issue-heading h1{font-size:36px;margin:8px 0}.issue-heading>p{margin-bottom:0}.issue-heading .edition-line{padding:12px 0}.edition-switch{justify-content:flex-start;align-items:center;gap:12px;padding:8px 0;border-top:0;border-bottom:1px solid var(--line);font-size:14px}.edition-switch a{padding:6px 8px;min-height:44px}.edition-switch [aria-current=page]{color:var(--accent);background:var(--wash);text-decoration:underline;text-underline-offset:5px}.edition-switch>span{color:var(--line)}.front-grid{align-items:start}.front-grid>div{min-width:0}.issue-identity{font-weight:bold;color:var(--ink)}.day-news ul{padding-left:20px;font-size:13px}.day-news h3{font-size:14px;margin:22px 0 8px}.archive-day{border-top:2px solid var(--ink);margin:20px 0 32px}.archive-day h2{font-size:22px;margin:16px 0}.issue-label{font-size:12px;white-space:nowrap;min-width:4em}.archive-list strong{overflow-wrap:anywhere}
 @media(max-width:700px){.issue-heading h1{font-size:29px}.day-news .section-title{flex-wrap:wrap}.day-news .section-title>span{max-width:none;text-align:left}.edition-switch{gap:8px}.archive-day h2{font-size:20px}.brand{font-size:clamp(30px,9vw,46px)}}
+
+/* Native disclosures and ordinary links keep navigation usable without JS. */
+summary{cursor:pointer;min-height:44px;display:list-item;align-content:center;font-weight:bold}
+summary:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible{outline-color:var(--accent)}
+.category-menu>summary{display:none}
+.category-menu:not([open])>nav{display:flex}
+.edition-switch,.issue-navigation,.archive-months,.article-toc nav{border:0;padding:0;gap:8px;letter-spacing:0}
+.edition-switch{margin:0 0 20px;display:flex;flex-wrap:wrap}
+.edition-switch a{flex:1;max-width:240px;min-height:44px;display:grid;place-items:center;padding:8px 12px;background:var(--paper);border:1px solid var(--line);font-size:15px}
+.edition-switch [aria-current=page]{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:bold;text-decoration:underline;text-underline-offset:5px}
+.issue-navigation{margin:0 0 24px}
+.issue-navigation a,.archive-months a{min-height:44px;display:flex;align-items:center;padding:8px 12px;border:1px solid var(--line);background:var(--paper)}
+.article-edition a{display:inline-flex;align-items:center;min-height:44px;color:var(--accent);font-size:14px}
+.article-toc{border-block:1px solid var(--line);margin:24px 0}
+.article-toc nav{display:grid;padding:4px 0 16px;font-weight:normal}
+.article-toc a{min-height:44px;display:flex;align-items:center;text-decoration:underline}
+.verification summary{font-size:inherit}
+.weather-details{margin-top:12px;border-top:1px solid var(--line)}
+.weather-details summary{font-size:14px}
+.weather-details .button{width:100%;margin-top:8px}
+.weather-details .small{margin-top:14px}
+.weather-details a{text-decoration:underline}
+.weather h2{text-wrap:balance}
+.archive-months{margin-bottom:24px}
+.archive-month>h2{margin-top:36px;font-size:24px}
+.archive-day{margin:0;border-top:1px solid var(--line);display:grid;grid-template-columns:70px minmax(0,1fr);gap:20px;border-top:1px solid var(--line);padding:18px 0}
+.archive-day h3{margin:10px 0;font-size:20px}
+.archive-day a{padding:12px;gap:12px;border:0;min-height:64px}
+.archive-list .issue-label{margin-left:0;min-width:80px;color:var(--accent);font-weight:bold}
+.mobile-navigation{display:none}
+.front-grid>* ,.top-five li>div,.cards>*,.reading{min-width:0}
+.page{overflow-wrap:anywhere}
+.prose img{max-width:100%;height:auto}
+.prose pre{max-width:100%;overflow:auto;white-space:pre}
+.table-wrap{max-width:100%}
+:target{scroll-margin-top:24px}
+@media(max-width:700px){
+ :root{--muted:#59655b}
+ :root[data-theme=dark]{--muted:#b0bdad}
+ body{font-size:16px;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+ html{scroll-padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+ a,button,summary,input,select{scroll-margin-bottom:calc(84px + env(safe-area-inset-bottom))}
+ .page{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+ .mast-top{padding:4px 0;font-size:11px;letter-spacing:0}
+ .mast-top>span{display:none}
+ .mast-top>div{width:100%;justify-content:space-between}
+ .mast-top a,#theme{min-height:44px;display:flex;align-items:center;font-size:14px}
+ .mast{padding:16px 0 12px}
+ .brand{font-size:clamp(30px,8.8vw,38px);letter-spacing:-1.5px}
+ .brand span{margin-left:7px}
+ .brand i{font-size:12px;letter-spacing:.25em;margin-top:6px}
+ .mast p{display:none}
+ .mast p span{display:none}
+ .category-menu{border-block:1px solid var(--line)}
+ .category-menu>summary{display:list-item;margin-left:18px;font-size:14px}
+ .category-menu:not([open])>nav{display:none}
+ .category-menu nav{border:0;padding:8px 0;gap:4px 12px}
+ .category-menu nav a{display:flex;align-items:center;min-height:44px;font-size:14px}
+ .edition-line{font-size:14px;gap:4px 12px;padding:16px 0 10px}
+ .edition-line a{display:flex;align-items:center;min-height:44px}
+ .issue-heading .edition-line a{width:auto;margin-left:auto}
+ .edition-switch{gap:8px;margin-bottom:16px;flex-wrap:wrap}
+ .edition-switch>span{display:none}
+ .edition-switch a{flex-basis:calc(50% - 8px)}
+ .issue-heading{padding-top:16px}
+ .issue-heading h1{font-size:24px;margin:6px 0}
+ .issue-heading>p{font-size:16px;margin-bottom:0}
+ .day-news h3,.day-news ul{font-size:16px;line-height:1.85}
+ .day-news a{min-height:44px;display:inline-block;align-content:center}
+ .edition-switch a{font-size:16px;max-width:none;padding:8px;min-width:0}
+ .front-grid{margin:16px 0 28px;gap:16px}
+ .front{padding-bottom:20px}
+ .front>.eyebrow{margin-bottom:12px}
+ .front h2{font-size:26px;line-height:1.55;margin-bottom:14px}
+ .front-summary{font-size:16px;line-height:1.85;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin-bottom:12px}
+ .front-bottom{margin-top:12px}
+ .button{min-height:44px;min-width:44px;font-size:15px;padding:8px 16px;align-content:center}
+ .eyebrow,.badge{font-size:12px;letter-spacing:0}
+ .weather{padding:14px 16px;justify-content:start}
+ .weather>.eyebrow{display:none}
+ .weather h2{font-size:18px;margin:0 0 8px;line-height:1.55}
+ #weather-data{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;align-items:center}
+ #weather-data p{margin:0}
+ #weather-data .small{grid-column:1/-1;font-size:14px}
+ #weather-data .weather-condition{font-size:20px;margin:6px 0}
+ #weather-data .temperature{font-size:28px;margin:6px 0;white-space:nowrap}
+ .weather>.small{font-size:14px;border:0;padding-top:0;margin-top:8px}
+ .weather-details .small{font-size:14px;line-height:1.8}
+ .section-title{align-items:flex-start;flex-wrap:wrap;margin-top:28px;padding-top:14px}
+ .section-title h2{font-size:22px;line-height:1.5}
+ .section-title>a{font-size:14px;min-height:44px;display:flex;align-items:center}
+ .section-title>span{font-size:14px;max-width:none;text-align:left}
+ .top-five li{padding:18px 0;gap:10px}
+ .top-five .number{font-size:25px;min-width:30px}
+ .top-five h3,.card h3{font-size:18px;line-height:1.65;margin:8px 0}
+ .top-five h3 a,.card h3 a{display:block;min-height:44px}
+ .top-five p,.card p{font-size:16px;line-height:1.85;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+ .card{padding:18px 0}
+ .card p{margin-bottom:12px}
+ .tags{gap:4px 10px;font-size:14px}
+ .tags a{min-height:44px;display:flex;align-items:center}
+ .card .tags{display:none}
+ .readmore{min-height:44px;display:flex;align-items:center;font-size:15px;margin-top:4px}
+ .watch-tags a,.topic-cloud a{min-height:44px;display:flex;align-items:center;font-size:14px}
+ .page-title{padding:24px 0 16px}
+ .page-title h1,.reading>h1{font-size:27px;line-height:1.6;margin:16px 0}
+ .page-title p,.empty p{font-size:16px}
+ .reading{padding:8px 0 32px;max-width:42rem}
+ .reading .edition-switch{margin-bottom:24px}
+ .lede,.prose{font-size:17px;line-height:1.95}
+ .prose p{margin-bottom:1.5em}
+ .prose h2{font-size:23px;margin:44px 0 18px}
+ .prose h3{font-size:20px;margin:36px 0 16px}
+ .prose ul,.prose ol{padding-left:24px}
+ .prose li{margin-bottom:12px}
+ .prose blockquote{padding:14px 16px;margin:28px 0}
+ .prose pre{font-size:14px;padding:14px}
+ .prose code{font-size:.94em}
+ .article-meta{font-size:14px;gap:8px 16px;margin:18px 0 12px}
+ .verification{font-size:16px;padding:12px 16px;margin:20px 0}
+ .sources{font-size:16px;line-height:1.9;margin-top:40px}
+ .sources small,.source-type{font-size:14px}
+ .sources li{margin-bottom:20px}
+ .sources li>a{display:inline-block;min-height:44px;align-content:center}
+ .back-link,.breadcrumb a{min-height:44px;display:inline-flex;align-items:center;font-size:15px}
+ .breadcrumb{font-size:14px;margin-top:12px}
+ .archive-day{grid-template-columns:42px minmax(0,1fr);gap:8px;padding:12px 0}
+ .archive-day a{display:grid;grid-template-columns:1fr auto;gap:6px 8px;padding:12px 8px}
+ .archive-list strong{order:0;grid-column:1/-1;font-size:16px;line-height:1.75}
+ .archive-list span{font-size:14px}
+ .archive-list .issue-label{min-width:0;grid-column:1;grid-row:1;font-size:15px}
+ .archive-day a>span:last-child{grid-column:2;grid-row:1}
+ .notice,.small{font-size:14px}
+ .filters label,#search-form label,#search-count{font-size:15px}
+ .filters select{font-size:16px;max-width:100%;margin-left:8px}
+ .filters label{max-width:100%;flex-wrap:wrap}
+ table{font-size:15px;min-width:560px}
+ footer{font-size:14px}
+ footer a{min-height:44px;display:flex;align-items:center}
+ footer>small{font-size:13px}
+ .mobile-navigation{position:fixed;z-index:20;inset:auto 0 0;display:flex;gap:4px;padding:6px max(8px,env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));border:0;border-top:1px solid var(--line);background:var(--paper);font-size:14px}
+ .mobile-navigation a{flex:1;display:grid;place-items:center;min-height:44px;padding:6px 2px;border-radius:3px}
+ .mobile-navigation [aria-current=page]{background:var(--wash);text-decoration:underline;text-underline-offset:4px}
+ .mobile-navigation a:focus-visible{outline-offset:-3px}
+ :target{scroll-margin-bottom:calc(84px + env(safe-area-inset-bottom))}
+}
+@media(max-width:700px) and (prefers-color-scheme:dark){:root:not([data-theme=light]){--muted:#b0bdad}}

@@ -1,6 +1,10 @@
 import {initWeather} from "./weather.js";
 const rootURL=new URL('../',import.meta.url);
 const $=selector=>document.querySelector(selector);
+const categoryMenu=$('.category-menu'),mobile=matchMedia('(max-width: 700px)');
+function syncCategoryMenu(){if(categoryMenu)categoryMenu.open=!mobile.matches;}
+syncCategoryMenu();
+mobile.addEventListener('change',syncCategoryMenu);
 const theme=$('#theme');
 function syncTheme(){const mode=document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');theme?.setAttribute('aria-label',mode==='dark'?'ライトモードに切り替える':'ダークモードに切り替える');}
 syncTheme();
@@ -16,7 +20,7 @@ for(const link of editionSwitches)link.addEventListener('click',event=>{
  if(!panels.some(panel=>panel.dataset.editionPanel===slug))return;
  event.preventDefault();
  for(const panel of panels)panel.hidden=panel.dataset.editionPanel!==slug;
- for(const item of editionSwitches){if(item===link)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');}
+ for(const item of editionSwitches){if(item.dataset.editionSwitch===slug)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');}
 });
 if($('#search-form')){
  const query=$('#query'),category=$('#category'),status=$('#status'),count=$('#search-count'),results=$('#results');

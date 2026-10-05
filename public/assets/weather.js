@@ -37,24 +37,24 @@ export function initWeather({document=globalThis.document,navigator=globalThis.n
    weather.replaceChildren();text('p',`${today} の予報（${timezone}）`,'small');text('p',codes[d.weather_code[0]]??'予報を確認','weather-condition');text('p',`${Math.round(d.temperature_2m_max[0])}° / ${Math.round(d.temperature_2m_min[0])}°`,'temperature');text('p',`最高 / 最低 · 降水確率 ${d.precipitation_probability_max[0]}％`,'small');text('p',`取得 ${new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(now())} JST`,'small');
   }catch{
    if(id!==request)return;
-   if(isCurrent){locationStatus('weather-failed',`現在地の予報を取得できないため、${fallbackName}の予報を表示します。`);await forecast(fallback);return;}
+   if(isCurrent){locationStatus('weather-failed',`現在地の予報を取得できません。${fallbackName}の予報です。`);await forecast(fallback);return;}
    weather.replaceChildren();text('p','今日の予報を取得できませんでした。','weather-condition');text('p','下の気象庁リンクで確認できます。','small');
   }
  }
  function locate(){
   if(button.disabled)return;
-  if(!navigator?.geolocation){locationStatus('unsupported',`このブラウザでは位置情報を利用できないため、${fallbackName}の予報を表示します。`);button.disabled=true;return;}
+  if(!navigator?.geolocation){locationStatus('unsupported',`位置情報に未対応のため、${fallbackName}の予報です。`);button.disabled=true;return;}
   button.disabled=true;
-  locationStatus('pending',`位置情報の許可・取得を待っています。取得までは${fallbackName}の予報を表示します。`);
+  locationStatus('pending',`位置情報を確認中。取得までは${fallbackName}の予報です。`);
   let settled=false;
-  const fail=error=>{if(settled)return;settled=true;button.disabled=false;locationStatus(error?.code===1?'denied':'failed',error?.code===1?`位置情報が許可されていないため、${fallbackName}の予報を表示します。再試行にはブラウザの位置情報設定をご確認ください。`:`位置情報を取得できないため、${fallbackName}の予報を表示します。`);};
+  const fail=error=>{if(settled)return;settled=true;button.disabled=false;locationStatus(error?.code===1?'denied':'failed',error?.code===1?`位置情報は未許可。${fallbackName}の予報です。再取得は下の詳細から。`:`位置情報を取得できません。${fallbackName}の予報です。`);};
   try{
    navigator.geolocation.getCurrentPosition(async position=>{
     if(settled)return;
     const {latitude,longitude}=position.coords??{};
     if(!Number.isFinite(latitude)||!Number.isFinite(longitude)||Math.abs(latitude)>90||Math.abs(longitude)>180){fail();return;}
     settled=true;
-    locationStatus('pending',`地名を取得しています。取得までは${fallbackName}の予報を表示します。`);
+    locationStatus('pending',`地名を確認中。取得までは${fallbackName}の予報です。`);
     try{
      // Only live, permitted device coordinates go to this client-only endpoint.
      const url=new URL('https://api.bigdatacloud.net/data/reverse-geocode-client');
@@ -62,11 +62,11 @@ export function initWeather({document=globalThis.document,navigator=globalThis.n
      const response=await fetch(url,{signal:AbortSignal.timeout(8000),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
      if(!response.ok)throw new Error('location');
      const name=placeName(await response.json());
-     locationStatus('granted','位置情報と地名を取得しました。現在地付近の予報を表示します。');
+     locationStatus('granted','現在地付近の予報です。');
      // Approximate only the forecast point; never persist or render coordinates.
      await forecast({latitude:latitude.toFixed(2),longitude:longitude.toFixed(2),timezone:'auto'},true,name);
     }catch{
-     locationStatus('geocoding-failed',`地名を取得できないため、${fallbackName}の予報を表示します。`);
+     locationStatus('geocoding-failed',`現在地の地名を取得できません。${fallbackName}の予報です。`);
      await forecast(fallback);
     }finally{button.disabled=false;}
    },fail,{enableHighAccuracy:false,timeout:10000,maximumAge:0});
