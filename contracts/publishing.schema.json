@@ -61,7 +61,7 @@
       "properties": {
         "slug": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$"},
         "title": {"$ref": "#/$defs/text"}, "summary": {"$ref": "#/$defs/text"},
-        "category": {"enum": ["ai", "hardware", "deals", "local", "life"]},
+        "category": {"enum": ["ai", "hardware", "vr", "deals", "local", "life"]},
         "tags": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
         "status": {"enum": ["verified", "reported", "unconfirmed"]}, "kind": {"const": "news"},
         "published": {"$ref": "#/$defs/jst"}, "verificationNote": {"$ref": "#/$defs/text"},

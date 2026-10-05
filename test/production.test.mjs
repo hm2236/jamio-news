@@ -63,6 +63,21 @@ test('same-day story/edition differences stop without changing published files',
  const f=fixture(t);applyDraft(f.root,f.folder);const file=path.join(f.root,'content/articles',`${f.articles[0].slug}.md`),before=fs.readFileSync(file,'utf8');f.articles[0].summary='Changed';f.save();assert.throws(()=>applyDraft(f.root,f.folder),/collision/);assert.equal(fs.readFileSync(file,'utf8'),before);
  f.articles[0].summary='Test fixture only';f.edition.title='Changed edition';f.save();assert.throws(()=>applyDraft(f.root,f.folder),/Same-day edition conflict/);
 });
+
+test('VR articles pass the daily contract and appear in category, search and Top 5',t=>{
+ const f=fixture(t);f.articles[0].category='vr';f.articles[0].tags=['VRChat','Meta Quest'];f.save();
+ assert.equal(applyDraft(f.root,f.folder).status,'applied');
+ execFileSync(process.execPath,['scripts/build.mjs'],{cwd:f.root,env:{...process.env,GITHUB_SHA:commit}});
+ const dist=path.join(f.root,'dist'),article=f.articles[0];
+ const vr=fs.readFileSync(path.join(dist,'categories/vr/index.html'),'utf8');
+ assert.ok(vr.includes(`/jamio-news/articles/${article.slug}/`));assert.ok(vr.includes(article.title));
+ assert.ok(!vr.includes('この面の記事はまだありません。'));
+ const search=JSON.parse(fs.readFileSync(path.join(dist,'search.json'),'utf8')).find(a=>a.title===article.title);
+ assert.equal(search.category,'vr');assert.equal(search.categoryLabel,'VR機器・VRChat（VRC）');assert.deepEqual(search.tags,article.tags);
+ const front=fs.readFileSync(path.join(dist,'index.html'),'utf8');
+ assert.match(front,/<section class="top-five">[\s\S]*?VR機器・VRChat（VRC）/);
+ assert.ok(fs.readFileSync(path.join(dist,`articles/${article.slug}/index.html`),'utf8').includes('href="/jamio-news/categories/vr/">VR機器・VRChat（VRC）</a>'));
+});
 test('ordinary write failure rolls back the whole edition and preserves price history',t=>{
  const f=fixture(t);f.prices.push(price());f.save();const priceFile=path.join(f.root,'data/prices.json'),before=fs.readFileSync(priceFile,'utf8');const write=fs.writeFileSync;
  let failed=false;t.mock.method(fs,'writeFileSync',(file,...args)=>{if(file===priceFile&&!failed){failed=true;throw new Error('Simulated write failure');}return write(file,...args);});
