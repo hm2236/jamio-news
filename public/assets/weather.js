@@ -1,4 +1,14 @@
 const fallback={latitude:31.72,longitude:130.27,timezone:'Asia/Tokyo'};
+const fallbackName='鹿児島県いちき串木野市';
+function placeName(data){
+ if(!['coordinates','reverseGeocoding'].includes(data?.lookupSource))throw new Error('location');
+ const clean=value=>typeof value==='string'?value.trim():'';
+ const region=clean(data.principalSubdivision),city=clean(data.city),locality=clean(data.locality);
+ const administrative=Array.isArray(data.localityInfo?.administrative)?data.localityInfo.administrative:[];
+ const municipality=data.countryCode==='JP'?[city,locality,...administrative.map(a=>clean(a.name)).reverse()].find(name=>/[市区町村]$/.test(name)):city||locality;
+ if(!municipality||(data.countryCode==='JP'&&!region))throw new Error('location');
+ return [...new Set([data.countryCode==='JP'?'':clean(data.countryName),region,municipality].filter(Boolean))].join(' ');
+}
 const codes={0:'晴れ',1:'おおむね晴れ',2:'晴れ時々曇り',3:'曇り',45:'霧',48:'霧',51:'小雨',53:'霧雨',55:'霧雨',56:'着氷性の霧雨',57:'着氷性の霧雨',61:'雨',63:'雨',65:'強い雨',66:'着氷性の雨',67:'着氷性の雨',71:'雪',73:'雪',75:'大雪',77:'雪',80:'にわか雨',81:'にわか雨',82:'強いにわか雨',85:'にわか雪',86:'にわか雪',95:'雷雨',96:'雷雨',99:'雷雨'};
 
 export function initWeather({document=globalThis.document,navigator=globalThis.navigator,fetch=globalThis.fetch,now=()=>new Date()}={}){
@@ -8,9 +18,9 @@ export function initWeather({document=globalThis.document,navigator=globalThis.n
  let request=0;
  const text=(tag,content,className)=>{const el=document.createElement(tag);el.textContent=content;if(className)el.className=className;weather.append(el);};
  const locationStatus=(state,message)=>{status.dataset.state=state;status.textContent=message;};
- async function forecast(point,isCurrent=false){
+ async function forecast(point,isCurrent=false,name=fallbackName){
   const id=++request;
-  title.textContent=isCurrent?'今日の現在地付近':'今日のいちき串木野';
+  title.textContent=`今日の${name}`;
   weather.replaceChildren();text('p','予報を読み込み中','small');
   const url=new URL('https://api.open-meteo.com/v1/forecast');
   url.search=new URLSearchParams({...point,daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',forecast_days:1});
@@ -27,30 +37,42 @@ export function initWeather({document=globalThis.document,navigator=globalThis.n
    weather.replaceChildren();text('p',`${today} の予報（${timezone}）`,'small');text('p',codes[d.weather_code[0]]??'予報を確認','weather-condition');text('p',`${Math.round(d.temperature_2m_max[0])}° / ${Math.round(d.temperature_2m_min[0])}°`,'temperature');text('p',`最高 / 最低 · 降水確率 ${d.precipitation_probability_max[0]}％`,'small');text('p',`取得 ${new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(now())} JST`,'small');
   }catch{
    if(id!==request)return;
-   if(isCurrent){locationStatus('weather-failed','現在地の予報を取得できないため、いちき串木野の予報を表示します。');await forecast(fallback);return;}
+   if(isCurrent){locationStatus('weather-failed',`現在地の予報を取得できないため、${fallbackName}の予報を表示します。`);await forecast(fallback);return;}
    weather.replaceChildren();text('p','今日の予報を取得できませんでした。','weather-condition');text('p','下の気象庁リンクで確認できます。','small');
   }
  }
  function locate(){
   if(button.disabled)return;
-  if(!navigator?.geolocation){locationStatus('unsupported','このブラウザでは位置情報を利用できないため、いちき串木野の予報を表示します。');button.disabled=true;return;}
+  if(!navigator?.geolocation){locationStatus('unsupported',`このブラウザでは位置情報を利用できないため、${fallbackName}の予報を表示します。`);button.disabled=true;return;}
   button.disabled=true;
-  locationStatus('pending','位置情報の許可・取得を待っています。取得まではいちき串木野の予報を表示します。');
+  locationStatus('pending',`位置情報の許可・取得を待っています。取得までは${fallbackName}の予報を表示します。`);
   let settled=false;
-  const fail=error=>{if(settled)return;settled=true;button.disabled=false;locationStatus(error?.code===1?'denied':'failed',error?.code===1?'位置情報が許可されていないため、いちき串木野の予報を表示します。再試行にはブラウザの位置情報設定をご確認ください。':'位置情報を取得できないため、いちき串木野の予報を表示します。');};
+  const fail=error=>{if(settled)return;settled=true;button.disabled=false;locationStatus(error?.code===1?'denied':'failed',error?.code===1?`位置情報が許可されていないため、${fallbackName}の予報を表示します。再試行にはブラウザの位置情報設定をご確認ください。`:`位置情報を取得できないため、${fallbackName}の予報を表示します。`);};
   try{
-   navigator.geolocation.getCurrentPosition(position=>{
+   navigator.geolocation.getCurrentPosition(async position=>{
     if(settled)return;
     const {latitude,longitude}=position.coords??{};
     if(!Number.isFinite(latitude)||!Number.isFinite(longitude)||Math.abs(latitude)>90||Math.abs(longitude)>180){fail();return;}
-    settled=true;button.disabled=false;
-    locationStatus('granted','位置情報を取得しました。現在地付近の予報を表示します。');
-    // Approximate the point for the forecast; never persist or render coordinates.
-    void forecast({latitude:latitude.toFixed(2),longitude:longitude.toFixed(2),timezone:'auto'},true);
+    settled=true;
+    locationStatus('pending',`地名を取得しています。取得までは${fallbackName}の予報を表示します。`);
+    try{
+     // Only live, permitted device coordinates go to this client-only endpoint.
+     const url=new URL('https://api.bigdatacloud.net/data/reverse-geocode-client');
+     url.search=new URLSearchParams({latitude,longitude,localityLanguage:'ja'});
+     const response=await fetch(url,{signal:AbortSignal.timeout(8000),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+     if(!response.ok)throw new Error('location');
+     const name=placeName(await response.json());
+     locationStatus('granted','位置情報と地名を取得しました。現在地付近の予報を表示します。');
+     // Approximate only the forecast point; never persist or render coordinates.
+     await forecast({latitude:latitude.toFixed(2),longitude:longitude.toFixed(2),timezone:'auto'},true,name);
+    }catch{
+     locationStatus('geocoding-failed',`地名を取得できないため、${fallbackName}の予報を表示します。`);
+     await forecast(fallback);
+    }finally{button.disabled=false;}
    },fail,{enableHighAccuracy:false,timeout:10000,maximumAge:0});
   }catch{fail();}
  }
- button.addEventListener('click',()=>{void forecast(fallback);locate();});
+ button.addEventListener('click',()=>{if(button.disabled)return;void forecast(fallback);locate();});
  void forecast(fallback);
  locate();
 }
