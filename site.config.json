@@ -6,10 +6,14 @@
   "categories": {
     "ai": "AI / テック",
     "hardware": "PC・半導体",
+    "vr": "VR機器・VRChat（VRC）",
     "deals": "価格ウォッチ / セール",
     "local": "鹿児島・いちき串木野",
     "life": "経済・生活"
   },
-  "topics": ["OpenAI", "Anthropic", "Google / Gemini", "NVIDIA", "AMD", "Intel", "ローカルLLM", "AIコーディング", "自動実装", "GPU", "大容量RAM", "SSD", "Strix Halo", "GB10 / DGX Spark / RTX Spark"],
+  "categoryDescriptions": {
+    "vr": "Meta Quest・PC VR、SteamVR / OpenXR、Valve・Meta・HTC・PICO・Bigscreenの機器、アイトラッキング・フェイストラッキング・ハンドトラッキング・フルトラ、無線化、GPU要件、価格・在庫を追います。VRChat本体・SDK・Creator Economy・Trust & Safety、アバター / ワールド制作、イベント・コミュニティへの影響も対象に、買い替えの価値、必要スペック、VRC体験の変化、日本での価格・発売時期まで確認します。"
+  },
+  "topics": ["OpenAI", "Anthropic", "Google / Gemini", "NVIDIA", "AMD", "Intel", "ローカルLLM", "AIコーディング", "自動実装", "GPU", "大容量RAM", "SSD", "Strix Halo", "GB10 / DGX Spark / RTX Spark", "VR機器", "VRChat", "VRC", "Meta Quest", "PC VR", "SteamVR", "OpenXR", "アイトラッキング", "フェイストラッキング", "ハンドトラッキング", "フルトラ"],
   "weather": { "latitude": 31.72, "longitude": 130.27, "label": "いちき串木野", "timezone": "Asia/Tokyo" }
 }

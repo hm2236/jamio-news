@@ -3,7 +3,7 @@
 じゃみお向け個人ニュースサイト。毎日の「じゃみお朝刊」をMarkdownで蓄積し、GitHub Pagesで静的配信します。
 
 - トップ：3分で読むトップ5、今日のいちき串木野の天気、一面、重要セール。
-- AI / テック、PC・半導体、価格ウォッチ / セール、鹿児島・いちき串木野、経済・生活、過去号、注目テーマ。
+- AI / テック、PC・半導体、VR機器・VRChat（VRC）、価格ウォッチ / セール、鹿児島・いちき串木野、経済・生活、過去号、注目テーマ。
 - スマホ対応、システム連動＋手動ダークモード、本文検索、タグ、RSS。
 - 確認済み事実 / 報道 / 未確認情報の表示。出典・検証メモ・訂正履歴。
 - 価格履歴：現在の観測価格、30日前比、観測最安、買い判断。
@@ -67,7 +67,7 @@ node scripts/build.mjs
 
 例示URLをそのまま本番記事に使わず、読んだ実際の出典に置き換えてください。
 
-- カテゴリキー：`ai`, `hardware`, `deals`, `local`, `life`。
+- カテゴリキー：`ai`, `hardware`, `vr`, `deals`, `local`, `life`。VR機器・VRChat（VRC）は `vr` に分類します。
 - 確認状態：`verified`, `reported`, `unconfirmed`。開設ガイドは `kind: guide`, `status: editorial`。
 - 出典種別：`official`, `paper`, `github`, `blog`, `media`, `x`。
 - `verified`はX以外の一次資料必須、`reported`は報道出典必須、Xがあれば`verificationNote`必須。
@@ -76,6 +76,12 @@ node scripts/build.mjs
 - 訂正時は`updated`、`corrections`を記載。既存号を消さず、出典と訂正履歴を残します。
 
 検証はメタデータの抜けや矛盾を止めるもので、記事の主張を自動的に事実確認するものではありません。編集者が原典と主張を照合する必要があります。
+
+## VR機器・VRChat（VRC）の追跡
+
+正式な追跡対象は、Meta Quest・PC VR、SteamVR / OpenXR、Valve・Meta・HTC・PICO・Bigscreen、アイトラッキング・フェイストラッキング・ハンドトラッキング・フルトラ、無線化、GPU要件、価格・在庫です。VRChat本体・SDK・Creator Economy・Trust & Safety、アバター / ワールド制作、イベント・コミュニティへの影響も扱います。
+
+買い替える価値、必要スペックの変化、VRC体験への効果、日本での価格・発売時期まで確認します。掲載と検証は[編集方針](docs/editorial-policy.md)に従い、カテゴリ・注目テーマは `site.config.json` で管理します。
 
 ## 価格履歴
 

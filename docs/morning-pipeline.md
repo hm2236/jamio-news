@@ -49,7 +49,7 @@ Xの投稿はニュース候補です。公式発表、論文、GitHub、企業�
 | `drafts/YYYY-MM-DD/edition.md` | title, kind=daily, published, top5, hero, articles, deals, production, 空でない本文 | `content/editions/YYYY-MM-DD.md` |
 | `drafts/YYYY-MM-DD/prices.json` | 今日の観測のJSON配列。観測なしは `[]` | `data/prices.json` に履歴追記 |
 
-articleのcategoryは `ai/hardware/deals/local/life`、statusは `verified/reported/unconfirmed`。sourcesは1件以上で、各要素に `title/type/url/checked` が必須。typeは `official/paper/github/blog/media/x`。verifiedにはX以外の一次資料、reportedにはmediaが必要です。ガイドは日刊記事に使用できません。タグは文字列の重複なし配列です。
+articleのcategoryは `ai/hardware/vr/deals/local/life`（`vr` はVR機器・VRChat（VRC））、statusは `verified/reported/unconfirmed`。sourcesは1件以上で、各要素に `title/type/url/checked` が必須。typeは `official/paper/github/blog/media/x`。verifiedにはX以外の一次資料、reportedにはmediaが必要です。ガイドは日刊記事に使用できません。タグは文字列の重複なし配列です。
 
 editionのtop5は重複なし5件。top5・heroはarticlesに含まれ、articlesは草稿の記事ファイルと完全一致します。dealsは同号のdealsカテゴリ記事だけ、なければ `[]`。記事slugは号の日付で始まり、article/editionのpublishedは同じJST日付で、記事が号より後になることはありません。チェック時刻はarticleのpublished（訂正時はupdated）以前です。07:00を過ぎて確認したものはpublishedを実際の制作時刻へ修正し、期限内に完成したと偽らないでください。
 
