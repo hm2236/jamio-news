@@ -11,6 +11,7 @@ import {guardPaths, validateDailyChange, guardGitPR} from '../scripts/daily-pr.m
 import {validateRemotePR, confirmRemotePublication} from '../scripts/remote-proof.mjs';
 import {verifyDeployment} from '../scripts/verify-deployment.mjs';
 import {editionDigest, editionURL} from '../scripts/production.mjs';
+import {editionIdentity, newestEdition} from '../scripts/edition.mjs';
 
 const date='2026-10-05', branch=`daily/${date}`, baseSha='a'.repeat(40), headSha='b'.repeat(40), mainSha='c'.repeat(40);
 const config=JSON.parse(fs.readFileSync(new URL('../site.config.json',import.meta.url)));
@@ -82,8 +83,9 @@ test('Actions verifies actual public receipt and HTML before emitting an API-rea
  const root=fileURLToPath(new URL('../',import.meta.url));
  const articles=readContent(new URL('../content/articles',import.meta.url)),editions=readContent(new URL('../content/editions',import.meta.url));
  const prices=JSON.parse(fs.readFileSync(new URL('../data/prices.json',import.meta.url)));
- const manifest={contractVersion:1,commit:mainSha,editions:editions.map(e=>({date:e.slug,url:editionURL(config,e.slug),digest:editionDigest(e,articles,prices)}))};
- const latest=manifest.editions.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
+ const manifest={contractVersion:1,commit:mainSha,editions:editions.map(e=>({...editionIdentity(e.slug),url:editionURL(config,e.slug),digest:editionDigest(e,articles,prices)}))};
+ const latestSlug=editions.slice().sort(newestEdition)[0].slug;
+ const latest=manifest.editions.find(e=>e.slug===latestSlug);
  let html=`<link rel="canonical" href="${latest.url}"><meta name="jamio-edition-digest" content="${latest.digest}">`,status=200;
  const request=async url=>new Response(url.includes('publication.json')?JSON.stringify(manifest):html,{status});
  assert.equal((await verifyDeployment(root,mainSha,{request})).status,'receipt-verified');

@@ -11,6 +11,7 @@ import {guardPaths, validateDailyChange, guardGitPR} from '../scripts/daily-pr.m
 import {validateRemotePR, confirmRemotePublication} from '../scripts/remote-proof.mjs';
 import {confirmPublication} from '../scripts/confirm-publication.mjs';
 import {verifyDeployment} from '../scripts/verify-deployment.mjs';
+import {parse} from '../scripts/content.mjs';
 
 const source=fileURLToPath(new URL('../',import.meta.url)), date='2026-10-05', slug=`${date}-evening`;
 const commit='c'.repeat(40), head='b'.repeat(40), base='a'.repeat(40);
@@ -19,6 +20,15 @@ function repository(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'jamio-editions-'));
   t.after(()=>{if(path.dirname(path.resolve(root))!==path.resolve(os.tmpdir()))throw new Error('Unexpected cleanup path');fs.rmSync(root,{recursive:true,force:true});});
   for(const name of ['content','data','docs','public','scripts','contracts','site.config.json'])fs.cpSync(path.join(source,name),path.join(root,name),{recursive:true});
+  // Keep the two legacy compatibility fixtures, and isolate synthetic editions
+  // from any real morning/noon/evening content added after this change.
+  const keep=new Set();
+  for(const name of fs.readdirSync(path.join(root,'content/editions'))){
+    const file=path.join(root,'content/editions',name),e=parse(fs.readFileSync(file,'utf8'),name);
+    if(['2026-10-04','2026-10-05'].includes(e.slug))e.articles.forEach(s=>keep.add(s));else fs.rmSync(file);
+  }
+  for(const name of fs.readdirSync(path.join(root,'content/articles'))){const file=path.join(root,'content/articles',name),a=parse(fs.readFileSync(file,'utf8'),name);if(!keep.has(a.slug))fs.rmSync(file);}
+  fs.writeFileSync(path.join(root,'data/prices.json'),'[]\n');
   return root;
 }
 function draft(root,id=slug,published='17:18:00') {
