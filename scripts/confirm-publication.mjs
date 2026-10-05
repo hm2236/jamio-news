@@ -1,9 +1,11 @@
-import {contract, isDate} from './contract.mjs';
+import {contract} from './contract.mjs';
+import {editionIdentity} from './edition.mjs';
 import {loadRepository, editionDigest, editionURL} from './production.mjs';
 import {assertPublicReceipt} from './remote-proof.mjs';
 
 export async function confirmPublication(root, date, commit, {request = fetch} = {}) {
-  if (!isDate(date) || !/^[a-f0-9]{40}$/.test(commit || '')) throw new Error('Confirm requires a date and full merged main SHA');
+  const identity = editionIdentity(date);
+  if (!/^[a-f0-9]{40}$/.test(commit || '')) throw new Error('Confirm requires a date and full merged main SHA');
   const {config, articles, editions, prices} = loadRepository(root);
   const edition = editions.find(e => e.slug === date);
   if (!edition) throw new Error('Edition is absent from this checkout; fetch merged main first');
@@ -22,6 +24,6 @@ export async function confirmPublication(root, date, commit, {request = fetch} =
   if (!run || run.status !== 'completed' || run.conclusion !== 'success') throw new Error('Pages workflow for this main SHA has not succeeded');
   const manifest = await (await get(new URL(`publication.json?commit=${commit}`, config.url).href)).json();
   const html = await (await get(`${editionUrl}?commit=${commit}`)).text();
-  assertPublicReceipt(manifest, {commit, date, editionUrl, digest}, html);
-  return {status: 'published', date, editionUrl, commit, digest, workflowUrl: run.html_url};
+  assertPublicReceipt(manifest, {commit, ...identity, editionUrl, digest}, html);
+  return {status: 'published', ...identity, editionUrl, commit, digest, workflowUrl: run.html_url};
 }

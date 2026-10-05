@@ -2,37 +2,42 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {isDate} from './contract.mjs';
+import {editionIdentity} from './edition.mjs';
 import {parse, validate, validatePrices} from './content.mjs';
-import {canonical, validatePackage, editionDigest, editionURL} from './production.mjs';
+import {canonical, validatePackage, editionDigest, editionURL, assertStableEditions} from './production.mjs';
 
 export function dailyDate(branch) {
-  const date = branch?.match(/^daily\/(\d{4}-\d{2}-\d{2})$/)?.[1];
-  if (!isDate(date)) throw new Error('Daily branch must be daily/YYYY-MM-DD with a real date');
-  return date;
+  return dailyIdentity(branch).date;
+}
+export function dailyIdentity(branch) {
+  if (!branch?.startsWith('daily/')) throw new Error('Daily branch must be daily/<edition-slug>');
+  return editionIdentity(branch.slice(6));
 }
 export function guardPaths(branch, changes) {
-  const date = dailyDate(branch);
-  const article = new RegExp(`^content/articles/${date}-[a-z0-9]+(?:-[a-z0-9]+)*\\.md$`);
+  const {date, slug} = dailyIdentity(branch);
+  const article = new RegExp(`^content/articles/${slug}-[a-z0-9]+(?:-[a-z0-9]+)*\\.md$`);
   for (const {status, file, mode} of changes) {
-    const allowed = (status === 'A' && (article.test(file) || file === `content/editions/${date}.md`)) || (status === 'M' && file === 'data/prices.json');
+    const allowed = (status === 'A' && (article.test(file) || file === `content/editions/${slug}.md`)) || (status === 'M' && file === 'data/prices.json');
     if (!allowed || mode !== '100644') throw new Error(`Daily PR forbidden change: ${status} ${file} (${mode})`);
   }
-  if (!changes.some(c => c.file === `content/editions/${date}.md`)) throw new Error('Daily PR must add its edition; existing same-day editions cannot be overwritten');
+  if (!changes.some(c => c.file === `content/editions/${slug}.md`)) throw new Error('Daily PR must add its edition; existing same-day editions cannot be overwritten');
   return date;
 }
 export function validateDailyChange(branch, changes, base, candidate) {
   const date = guardPaths(branch, changes);
-  if (base.editions.some(e => e.slug === date) || base.articles.some(a => a.slug.startsWith(date + '-'))) throw new Error('Same-day content already exists; resume confirmation or use a separate correction PR');
+  const {slug, variant} = dailyIdentity(branch);
+  if (base.editions.some(e => e.slug === slug) || base.articles.some(a => a.slug.startsWith(slug + '-'))) throw new Error('Same-day content already exists; resume confirmation or use a separate correction PR');
   if (candidate.prices.length < base.prices.length || canonical(candidate.prices.slice(0, base.prices.length)) !== canonical(base.prices)) throw new Error('Price history must remain an unchanged prefix');
   const observations = candidate.prices.slice(base.prices.length);
   if (changes.some(c => c.file === 'data/prices.json') && !observations.length) throw new Error('prices.json may change only to append real observations');
-  const edition = candidate.editions.find(e => e.slug === date);
-  const articles = candidate.articles.filter(a => a.slug.startsWith(date + '-'));
+  const edition = candidate.editions.find(e => e.slug === slug);
+  const addedSlugs = changes.filter(c => c.status === 'A' && c.file.startsWith('content/articles/')).map(c => path.basename(c.file,'.md'));
+  const articles = candidate.articles.filter(a => addedSlugs.includes(a.slug));
+  assertStableEditions(base, candidate);
   validatePackage({date, edition, articles, priceObservations: observations});
   validate(candidate.articles, candidate.editions, candidate.config);
   validatePrices(candidate.prices);
-  return {date, editionUrl: editionURL(candidate.config, date), digest: editionDigest(edition, candidate.articles, candidate.prices)};
+  return {date, slug, variant, editionUrl: editionURL(candidate.config, slug), digest: editionDigest(edition, candidate.articles, candidate.prices)};
 }
 export function guardGitPR(root, event) {
   const pr = event.pull_request;

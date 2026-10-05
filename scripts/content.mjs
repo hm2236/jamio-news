@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assertSchema, contract, isDate, isJST, isX, validateDailyEdition} from './contract.mjs';
+import {assertSchema, contract, isJST, isX, validateDailyEdition} from './contract.mjs';
+import {validateEditionIdentity} from './edition.mjs';
 export const labels = { verified: '確認済み事実', reported: '報道', unconfirmed: '未確認情報', editorial: '編集方針' };
 export const escape = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function safeURL(value) {
@@ -35,8 +36,12 @@ export function validate(articles, editions, config) {
     if (a.status === 'reported' && !sources.some(s => s.type === 'media' && !isX(s))) throw new Error(`${a.slug}: 報道機関の出典が必要です`);
     if (sources.some(isX) && a.kind === 'news' && !a.verificationNote) throw new Error(`${a.slug}: Xの検証状況を verificationNote に記載してください`);
   }
+  const editionSlugs = new Set();
   for (const e of editions) {
-    if (!isDate(e.slug) || !isJST(e.published) || e.published.slice(0,10)!==e.slug || !e.title || !['launch','daily'].includes(e.kind)) throw new Error(`${e.slug}: 無効な朝刊`);
+    const {date} = validateEditionIdentity(e);
+    if (editionSlugs.has(e.slug)) throw new Error(`Duplicate edition: ${e.slug}`);
+    editionSlugs.add(e.slug);
+    if (!isJST(e.published) || e.published.slice(0,10)!==date || !e.title || !['launch','daily'].includes(e.kind)) throw new Error(`${e.slug}: 無効な朝刊`);
     if (!Array.isArray(e.top5) || e.top5.length !== 5 || new Set(e.top5).size !== 5 || !Array.isArray(e.articles) || new Set(e.articles).size !== e.articles.length || !e.top5.every(s => e.articles.includes(s)) || !e.articles.every(s => slugs.has(s)) || !e.articles.includes(e.hero)) throw new Error(`${e.slug}: トップ5・一面・記事参照を確認してください`);
     if (e.kind === 'daily' && e.articles.some(s => articles.find(a => a.slug === s).kind !== 'news')) throw new Error(`${e.slug}: 日刊号に開設ガイドを入れないでください`);
     if (!Array.isArray(e.deals) || !e.deals.every(s => e.articles.includes(s) && articles.find(a=>a.slug===s).category==='deals')) throw new Error(`${e.slug}: セール参照が無効です`);

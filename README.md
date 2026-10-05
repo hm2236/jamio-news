@@ -10,6 +10,14 @@
 
 **初期コンテンツは2026-10-04の開設号（編集ガイド）です。最新ニュースや実売価格は未収集。自動収集・朝刊のチャット配信は未有効化です。** 天気だけは閲覧時に外部APIから取得します。
 
+## 同日複数版の識別と互換性
+
+新しい朝・昼・夕はedition-slugを`YYYY-MM-DD-morning` / `YYYY-MM-DD-noon` / `YYYY-MM-DD-evening`とし、date/variant/priceKeysを必須にします。旧形式`YYYY-MM-DD`のメタデータ・URL・digestはそのまま保持し、receiptではlegacyと識別します。同じ版だけを再開し、別版の記事は`<edition-slug>-<story>`として新規作成します。既存号は上書きしません。
+
+日刊ブランチは`daily/<edition-slug>`、草稿は`drafts/<edition-slug>/`、号は`content/editions/<edition-slug>.md`、URLは`/editions/<edition-slug>/`。新しい版のpriceKeysはこの版の観測だけを`JSON.stringify([sku,shop,condition,observed])`で記録し、観測なしは[]。旧形式号のある日に価格追記すると旧digestが変わるため停止します。dateだけで同日の別版を公開確認・通知しません。guard/public receipt/公開ログ/最終報告はdate/slug/variant/URL/digestを照合します。
+
+詳細は[同日複数版の契約](docs/morning-pipeline.md#同日複数版の識別と互換性)に従ってください。コード・契約の変更は基盤PR、各版の最終コンテンツは別の日刊PRに分離し、既存の全号のdigestと安全ガードを維持します。
+
 ## ローカルで確認
 
 Node.js 22以上。外部パッケージのインストールは不要です。
@@ -41,11 +49,11 @@ node --test
 node scripts/build.mjs
 ```
 
-`check` は無変更、`apply` は全件検証後に記事・号を追加し価格を追記します。既存の同日号と一致する再実行は `unchanged`、相違があれば停止します。出力はJSONで、`applied` はローカル反映のみです。PRを公開・CI確認・マージ後、mainを取得して `node scripts/daily.mjs confirm YYYY-MM-DD <マージ後mainの40桁SHA>` を実行し、`published` と `editionUrl` が返って初めて公開完了です。
+`check` は無変更、`apply` は全件検証後に記事・号を追加し価格を追記します。既存の同じ版と一致する再実行は `unchanged`、相違があれば停止します。出力はJSONで、`applied` はローカル反映のみです。PRを公開・CI確認・マージ後、mainを取得して `node scripts/daily.mjs confirm <edition-slug> <マージ後mainの40桁SHA>` を実行し、`published` と `editionUrl` が返って初めて公開完了です。
 
 **機械可読契約**：[contracts/publishing.schema.json](contracts/publishing.schema.json)。必須項目、独自format、参照・出典の追加検証、[06:00制作開始・07:00公開目標の引き継ぎ](docs/morning-pipeline.md)、[実行プロンプト](docs/chatgpt-morning-prompt.md)をセットで使用してください。日刊号はビルド・CIでも同じ契約を検証します。
 
-**remote/scheduled**：予定タスクにWeb＋GitHub APIがあり、clone/Nodeが使えない場合は自動的にこのモードを選択します。`daily/YYYY-MM-DD` だけに最終記事・号と実価格観測をAPIで書き、信頼済みmainの **Daily publication guard** と、正確なPR headの **Publish JAMIO NEWS** が成功してから期待head SHA付きでマージ。mainのPages成功と公開receiptのSHA/date/URL/digestをAPI/Webで照合すれば、ローカル実行は不要です。日刊PRはコード・契約・CI・既存記事を変更できず、価格履歴は追記だけです。[詳細なAPI手順](docs/morning-pipeline.md#remotescheduledのapi手順)。
+**remote/scheduled**：予定タスクにWeb＋GitHub APIがあり、clone/Nodeが使えない場合は自動的にこのモードを選択します。`daily/<edition-slug>` だけに最終記事・号と実価格観測をAPIで書き、信頼済みmainの **Daily publication guard** と、正確なPR headの **Publish JAMIO NEWS** が成功してから期待head SHA付きでマージ。mainのPages成功と公開receiptのSHA/date/URL/digestをAPI/Webで照合すれば、ローカル実行は不要です。日刊PRはコード・契約・CI・既存記事を変更できず、価格履歴は追記だけです。[詳細なAPI手順](docs/morning-pipeline.md#remotescheduledのapi手順)。
 
 記事メタデータ例：
 
@@ -72,7 +80,7 @@ node scripts/build.mjs
 - 出典種別：`official`, `paper`, `github`, `blog`, `media`, `x`。
 - `verified`はX以外の一次資料必須、`reported`は報道出典必須、Xがあれば`verificationNote`必須。
 - 朝刊：`top5`（5件）、`hero`、`articles`（全記事）、`deals`（その号の重要セール）を記事slugで参照。
-- 日刊記事のslugは `YYYY-MM-DD-<slug>`、本文と `verificationNote` は必須。出典の `checked` も実際のJST確認時刻です。朝刊には `production: {"contractVersion": 1, "x": {"status": "unavailable", "note": "実際の取得不可理由・代替出典の説明"}}` など、実際のX利用状況を記録します。出典URLの例示ドメインは日刊契約で拒否します。
+- 日刊記事のslugは `<edition-slug>-<story>`、本文と `verificationNote` は必須。出典の `checked` も実際のJST確認時刻です。朝刊には `production: {"contractVersion": 1, "x": {"status": "unavailable", "note": "実際の取得不可理由・代替出典の説明"}}` など、実際のX利用状況を記録します。出典URLの例示ドメインは日刊契約で拒否します。
 - 訂正時は`updated`、`corrections`を記載。既存号を消さず、出典と訂正履歴を残します。
 
 検証はメタデータの抜けや矛盾を止めるもので、記事の主張を自動的に事実確認するものではありません。編集者が原典と主張を照合する必要があります。

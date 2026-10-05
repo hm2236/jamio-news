@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {editionIdentity, validateEditionIdentity} from './edition.mjs';
 
 export const contract = JSON.parse(fs.readFileSync(new URL('../contracts/publishing.schema.json', import.meta.url), 'utf8'));
 export function isDate(value) {
@@ -33,7 +34,7 @@ export function assertSchema(value, schema = contract, location = '$') {
   if (schema.minimum !== undefined && value < schema.minimum) fail('below minimum');
   if (schema.minLength !== undefined && value.length < schema.minLength) fail('empty string');
   if (schema.pattern && !new RegExp(schema.pattern).test(value)) fail('invalid string');
-  if (schema.format && !({date: isDate, 'jst-date-time': isJST, 'source-url': sourceURL})[schema.format](value)) fail(`invalid ${schema.format}`);
+  if (schema.format && !({date: isDate, 'jst-date-time': isJST, 'source-url': sourceURL, 'edition-slug': value => {try {editionIdentity(value); return true;} catch {return false;}}})[schema.format](value)) fail(`invalid ${schema.format}`);
   if (schema.required) for (const key of schema.required) if (!Object.hasOwn(value, key)) fail(`missing ${key}`);
   if (schema.properties) for (const [key, item] of Object.entries(value)) {
     if (Object.hasOwn(schema.properties, key)) assertSchema(item, schema.properties[key], `${location}.${key}`);
@@ -46,11 +47,12 @@ export function assertSchema(value, schema = contract, location = '$') {
 }
 
 export function validateDailyEdition(articles, edition) {
+  const {date} = validateEditionIdentity(edition);
   const selected = edition.articles.map(slug => articles.find(a => a.slug === slug));
-  assertSchema({date: edition.slug, edition, articles: selected, priceObservations: []});
-  if (edition.published.slice(0, 10) !== edition.slug) throw new Error('Edition date must match JST published');
+  assertSchema({date, edition, articles: selected, priceObservations: []});
+  if (edition.published.slice(0, 10) !== date) throw new Error('Edition date must match JST published');
   for (const article of selected) {
-    if (!article.slug.startsWith(edition.slug + '-') || article.published.slice(0, 10) !== edition.slug || Date.parse(article.published) > Date.parse(edition.published)) throw new Error('Daily articles must belong to this date and precede the edition');
+    if (!article.slug.startsWith(edition.slug + '-') || article.published.slice(0, 10) !== date || Date.parse(article.published) > Date.parse(edition.published)) throw new Error('Daily articles must belong to this date and precede the edition');
     if (Boolean(article.updated) !== Boolean(article.corrections) || (article.updated && Date.parse(article.updated) < Date.parse(article.published))) throw new Error('Corrections require updated and corrections together');
     for (const source of article.sources) {
       if (Date.parse(source.checked) > Date.parse(article.updated || article.published)) throw new Error('Source checked time cannot follow article publication/update');

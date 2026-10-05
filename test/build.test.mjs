@@ -25,7 +25,7 @@ test('every generated internal link works beneath the GitHub Pages repository pa
  const rss=fs.readFileSync(path.join(dir,'rss.xml'),'utf8');assert.equal((rss.match(/<item>/g)??[]).length,articles.length+editions.length);assert.ok(rss.includes('https://hm2236.github.io/jamio-news/editions/2026-10-04/'));
  const index=JSON.parse(fs.readFileSync(path.join(dir,'search.json'),'utf8'));assert.equal(index.length,articles.length);assert.ok(index.every(a=>a.url.startsWith('/jamio-news/articles/')));
  const receipt=JSON.parse(fs.readFileSync(path.join(dir,'publication.json'),'utf8'));assert.match(receipt.commit,/^[a-f0-9]{40}$/);assert.equal(receipt.editions.length,editions.length);
- for(const e of receipt.editions)assert.ok(fs.readFileSync(path.join(dir,`editions/${e.date}/index.html`),'utf8').includes(e.digest));
+ for(const e of receipt.editions)assert.ok(fs.readFileSync(path.join(dir,`editions/${e.slug || e.date}/index.html`),'utf8').includes(e.digest));
  const front=fs.readFileSync(path.join(dir,'index.html'),'utf8');
  assert.ok(front.includes('AI・PC・VR/VRC・鹿児島'));
  assert.ok(front.includes('href="/jamio-news/categories/vr/">VR機器・VRChat（VRC）</a>'));
