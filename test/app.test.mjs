@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 test('edition switching changes every issue panel and preserves ordinary modified link navigation',async t=>{
   const morning={dataset:{editionSwitch:'2026-10-06-morning'}},evening={dataset:{editionSwitch:'2026-10-06-evening'}};
   const links=[morning,evening];
-  for(const link of links){
+  const mobileMorning={dataset:{editionSwitch:morning.dataset.editionSwitch}},mobileEvening={dataset:{editionSwitch:evening.dataset.editionSwitch}};
+  const switches=[...links,mobileMorning,mobileEvening];
+  for(const link of switches){
     link.attributes={};
     link.setAttribute=(key,value)=>{link.attributes[key]=value;};
     link.removeAttribute=key=>{delete link.attributes[key];};
@@ -16,7 +18,7 @@ test('edition switching changes every issue panel and preserves ordinary modifie
   t.after(()=>{
     for(const [key,prior]of [['document',priorDocument],['matchMedia',priorMedia]]){if(prior)Object.defineProperty(globalThis,key,prior);else delete globalThis[key];}
   });
-  globalThis.document={documentElement:{dataset:{}},querySelector:()=>null,querySelectorAll:selector=>selector==='[data-edition-switch]'?links:panels};
+  globalThis.document={documentElement:{dataset:{}},querySelector:()=>null,querySelectorAll:selector=>selector==='[data-edition-switch]'?switches:panels};
   globalThis.matchMedia=()=>({matches:false,addEventListener:()=>{}});
   await import('../public/assets/app.js');
   const click=(link,changes={})=>{
@@ -26,10 +28,12 @@ test('edition switching changes every issue panel and preserves ordinary modifie
   assert.equal(click(morning),true);
   assert.ok(panels.every(panel=>panel.hidden===(panel.dataset.editionPanel===evening.dataset.editionSwitch)));
   assert.equal(morning.attributes['aria-current'],'page');assert.equal(evening.attributes['aria-current'],undefined);
+  assert.equal(mobileMorning.attributes['aria-current'],'page');assert.equal(mobileEvening.attributes['aria-current'],undefined);
   for(const changes of [{ctrlKey:true},{metaKey:true},{shiftKey:true},{altKey:true},{button:1}]){
     assert.equal(click(evening,changes),false);assert.equal(morning.attributes['aria-current'],'page');
   }
-  assert.equal(click(evening),true);
+  assert.equal(click(mobileEvening),true);
   assert.ok(panels.every(panel=>panel.hidden===(panel.dataset.editionPanel===morning.dataset.editionSwitch)));
   assert.equal(evening.attributes['aria-current'],'page');assert.equal(morning.attributes['aria-current'],undefined);
+  assert.equal(mobileEvening.attributes['aria-current'],'page');assert.equal(mobileMorning.attributes['aria-current'],undefined);
 });
