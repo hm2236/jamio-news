@@ -19,6 +19,10 @@ function fixture(t) {
     fs.rmSync(root,{recursive:true,force:true});
   });
   for (const name of ['content','data','site.config.json']) fs.cpSync(path.join(sourceRoot,name),path.join(root,name),{recursive:true});
+  // Actual publication of the synthetic test date must not collide with this fixture.
+  for (const dir of ['content/articles','content/editions']) for (const name of fs.readdirSync(path.join(root,dir))) {
+    if (name.startsWith('2026-10-07-morning')) fs.rmSync(path.join(root,dir,name));
+  }
   const ctx = context(), folder = path.join(root,'drafts',ctx.slug);
   fs.mkdirSync(path.join(folder,'articles'),{recursive:true});
   const snapshots = Array.from({length:5},(_,i)=>{
@@ -127,19 +131,20 @@ test('deep-dive guard rejects thin/duplicate/recycled/index news, stale/future e
     f=>{const claim=f.evidence.stories[0].claims[1];claim.kind='rumor';f.articles[0].body=f.articles[0].body.replace('[推論]','[未確認情報]');}
   ]) {const f=fixture(t);mutate(f);assert.throws(f.evaluate);}
 });
-test('shadow pauses on conflict, resumes exact existing confirmation, detects main advance and all research failures',async()=>{
-  const ctx=context(), repository=loadRepository(sourceRoot), noConflict=async endpoint=>endpoint.includes('/pulls?')?[]:endpoint.includes('/daily/')?null:{object:{sha:ctx.baseSha}};
+test('shadow pauses on conflict, resumes exact existing confirmation, detects main advance and all research failures',async t=>{
+  const checkout=fixture(t).root;
+  const ctx=context(), repository=loadRepository(checkout), noConflict=async endpoint=>endpoint.includes('/pulls?')?[]:endpoint.includes('/daily/')?null:{object:{sha:ctx.baseSha}};
   let collects=0,confirms=0;
-  const result=await shadow(sourceRoot,ctx,{now:()=>now,get:noConflict,collect:async()=>{collects++;return {snapshots:[],failures:[{reason:'unavailable'}]};}});
+  const result=await shadow(checkout,ctx,{now:()=>now,get:noConflict,collect:async()=>{collects++;return {snapshots:[],failures:[{reason:'unavailable'}]};}});
   assert.equal(result.status,'blocked-research'); assert.equal(collects,1);
-  const conflicting=await shadow(sourceRoot,ctx,{now:()=>now,get:async endpoint=>endpoint.includes('/daily/')?{object:{sha:'b'.repeat(40)}}:await noConflict(endpoint),collect:async()=>{throw new Error('must not collect');}});
+  const conflicting=await shadow(checkout,ctx,{now:()=>now,get:async endpoint=>endpoint.includes('/daily/')?{object:{sha:'b'.repeat(40)}}:await noConflict(endpoint),collect:async()=>{throw new Error('must not collect');}});
   assert.equal(conflicting.status,'blocked-conflict');
   const existing=repository.editions.find(e=>e.slug.endsWith('-morning'));
   const existingContext=createContext({runId:123,attempt:1,createdAt:existing.published,baseSha:ctx.baseSha,windowStart:existing.published});
-  const resumed=await shadow(sourceRoot,existingContext,{now:()=>new Date(existing.published),get:noConflict,collect:async()=>{throw new Error('must not regenerate');},confirm:async(root,slug,sha)=>{confirms++;assert.equal(slug,existing.slug);assert.equal(sha,ctx.baseSha);return {status:'published'};}});
+  const resumed=await shadow(checkout,existingContext,{now:()=>new Date(existing.published),get:noConflict,collect:async()=>{throw new Error('must not regenerate');},confirm:async(root,slug,sha)=>{confirms++;assert.equal(slug,existing.slug);assert.equal(sha,ctx.baseSha);return {status:'published'};}});
   assert.equal(resumed.status,'already-published'); assert.equal(confirms,1);
-  await assert.rejects(()=>shadow(sourceRoot,ctx,{now:()=>now,get:async endpoint=>endpoint==='/git/ref/heads/main'?{object:{sha:'b'.repeat(40)}}:await noConflict(endpoint),collect:async()=>({snapshots:[{}]})}),/Stale main/);
-  await assert.rejects(()=>shadow(sourceRoot,existingContext,{now:()=>new Date(existing.published),get:noConflict,confirm:async()=>{throw new Error('Pages receipt mismatch');}}),/receipt mismatch/);
+  await assert.rejects(()=>shadow(checkout,ctx,{now:()=>now,get:async endpoint=>endpoint==='/git/ref/heads/main'?{object:{sha:'b'.repeat(40)}}:await noConflict(endpoint),collect:async()=>({snapshots:[{}]})}),/Stale main/);
+  await assert.rejects(()=>shadow(checkout,existingContext,{now:()=>new Date(existing.published),get:noConflict,confirm:async()=>{throw new Error('Pages receipt mismatch');}}),/receipt mismatch/);
 });
 test('GitHub read token stays at API; missing authentication/permission is never interpreted as absent ref',async()=>{
   let observed;
