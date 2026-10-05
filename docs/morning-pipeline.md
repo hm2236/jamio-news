@@ -10,7 +10,7 @@
 
 例：`node scripts/new-edition.mjs 2026-10-05-evening` → `drafts/2026-10-05-evening/` → check/apply → `daily/2026-10-05-evening`のPR → 両CI成功 → 期待head付き通常マージ → `node scripts/daily.mjs confirm 2026-10-05-evening <正確なmain SHA>`。URLは`https://hm2236.github.io/jamio-news/editions/2026-10-05-evening/`です。コード・契約・サイト生成の変更は別の基盤PRに分離し、基盤をマージしてから日刊PRを作ります。
 
-Daily publication guardは信頼済みmainで全差分を検証し、対象版の記事・号の追加と価格の追記だけを許可します。同じ版の重複、別版の記事、既存記事/号の変更、非通常ファイル、既存価格変更、観測欠落/重複、5件不足、X・出典・時系列の違反は従来どおり停止します。別版追加でも既存の全号の内容とdigestが変わらないことを検証します。旧形式digestは同日価格全体を含むため、旧形式号がある日に価格を新規追記すると旧digestが変わり、停止します。観測を捏造・省略して回避せず、その観測を載せる必要があれば明示的な別の移行設計が必要です。明示版同士では自分のpriceKeysだけをdigestへ含め、後の版の価格追加で先の版を変えません。
+Daily publication guardは信頼済みmainで全差分を検証し、対象版の記事・号の追加と価格の追記だけを許可します。同じ版の重複、別版の記事、既存記事/号の変更、非通常ファイル、既存価格変更、観測欠落/重複、版ごとの本数違反（朝・昼・legacyのトップ5、夕刊1〜5件）、X・出典・時系列の違反は従来どおり停止します。別版追加でも既存の全号の内容とdigestが変わらないことを検証します。旧形式digestは同日価格全体を含むため、旧形式号がある日に価格を新規追記すると旧digestが変わり、停止します。観測を捏造・省略して回避せず、その観測を載せる必要があれば明示的な別の移行設計が必要です。明示版同士では自分のpriceKeysだけをdigestへ含め、後の版の価格追加で先の版を変えません。
 
 トップと公開確認の最新号はpublished順、同時刻はslug順。アーカイブ/RSS/サイトマップは版ごとのURLを保持し、検索は記事と所属版のタイトル・リンクを含みます。JAMIO_DAILY_VALIDATION、publication.json、JAMIO_PUBLIC_RECEIPT、最終報告はdateに加えてslug/variantを照合します。同日の別版receiptを証拠にできません。通知台帳の重複キーは送信先＋slug＋digest（dateだけでは不可）。旧API-only receiptはlegacyだけに互換を残し、新版ではslug/variantのない証拠を拒否します。両CIの正確なhead/base、merge SHA、mainのPages成功、公開URL/digestの完全一致は必須です。
 
@@ -63,7 +63,7 @@ Xの投稿はニュース候補です。公式発表、論文、GitHub、企業�
 
 articleのcategoryは `ai/hardware/vr/deals/local/life`（`vr` はVR機器・VRChat（VRC））、statusは `verified/reported/unconfirmed`。sourcesは1件以上で、各要素に `title/type/url/checked` が必須。typeは `official/paper/github/blog/media/x`。verifiedにはX以外の一次資料、reportedにはmediaが必要です。ガイドは日刊記事に使用できません。タグは文字列の重複なし配列です。
 
-editionのtop5は重複なし5件。top5・heroはarticlesに含まれ、articlesは草稿の記事ファイルと完全一致します。dealsは同号のdealsカテゴリ記事だけ、なければ `[]`。記事slugは号の日付で始まり、article/editionのpublishedは同じJST日付で、記事が号より後になることはありません。チェック時刻はarticleのpublished（訂正時はupdated）以前です。07:00を過ぎて確認したものはpublishedを実際の制作時刻へ修正し、期限内に完成したと偽らないでください。
+editionのtop5は重複なし5件。明示夕刊（variant=evening）だけはtop5・articlesとも1〜5件を許容します。フィールド名top5は互換性のため維持します。朝刊・昼刊・legacyは従来どおりトップ5が必須です。top5・heroはarticlesに含まれ、articlesは草稿の記事ファイルと完全一致します。dealsは同号のdealsカテゴリ記事だけ、なければ `[]`。記事slugは号の日付で始まり、article/editionのpublishedは同じJST日付で、記事が号より後になることはありません。チェック時刻はarticleのpublished（訂正時はupdated）以前です。07:00を過ぎて確認したものはpublishedを実際の制作時刻へ修正し、期限内に完成したと偽らないでください。
 
 productionは `{"contractVersion":1,"x":{"status":"unavailable","note":"実際の取得不可理由と代替確認先"}}` の形です。statusは `available/partial/unavailable/not-used`、noteは空でない文字列。unavailable/not-usedの号でXを取得済み出典にすると停止します。X取得済みならsourceに `author/postPublished/claim/identityNote` も必須。postPublishedはJST換算した実際の投稿時刻です。XのURLをofficialなどと偽装しても、ホスト名で判定します。partialでは実際に取得できた範囲と失敗範囲をnoteに書きます。
 
@@ -74,7 +74,7 @@ productionは `{"contractVersion":1,"x":{"status":"unavailable","note":"実際�
 1. 今日の日付をAsia/Tokyoで決定。開始時点の最新main、同日の既存号、`daily/<edition-slug>` ブランチ/PR、配信台帳を確認します。途中でJST日付が変わった場合は停止して、翌日の別実行として調査し直します。
 2. cleanな隔離チェックアウトで `git fetch origin main`、最新mainから `daily/<edition-slug>` ブランチを作成します。既存ブランチ/PRがあれば状況を調べて再開し、同じ版の別PRを作りません。並行して同じチェックアウトへ書き込まないでください。
 3. `node scripts/new-edition.mjs <edition-slug>`。草稿の再初期化は拒否します。既存草稿はそのまま編集して再開できます。生成されるのは空の参照・本文・価格配列だけで、公開可能なサンプル記事を生成しません。
-4. 調査・原典照合・記事作成後、`node scripts/daily.mjs check drafts/<edition-slug>`。無変更で全パッケージと既存リポジトリを検証します。5件揃わない場合や裏取り不足は創作で埋めず、この段階で中止します。
+4. 調査・原典照合・記事作成後、`node scripts/daily.mjs check drafts/<edition-slug>`。無変更で全パッケージと既存リポジトリを検証します。朝刊で5件揃わない場合や裏取り不足は創作で埋めず、この段階で中止します。
 5. `node scripts/daily.mjs apply drafts/<edition-slug>`。すべての検証・衝突検査が完了してから保存します。通常の書き込み例外は新規ファイルを取り消し元の価格履歴を復元します。OS停止・プロセス強制終了までトランザクション保証するものではありません。その場合は公開せず、隔離チェックアウトの差分を調べ、部分書き込みを破棄して最新mainから再開します。
 6. `node scripts/validate.mjs`、`node --test`、`node scripts/build.mjs` を順に実行し、記事・出典・価格・差分をレビューします。`content/articles/`、`content/editions/`、必要時の `data/prices.json` だけをコミット・pushしてPRを作成。草稿・個人情報・秘密・配信台帳を公開しません。通常の朝刊でスクリプト/契約/CIを変更して検証を回避しません。
 7. PRの正確なheadに対するCI成功を確認し、レビュー条件と実行環境の承認条件を満たしてマージ。mainが先に進んだら最新mainを取り込み、同日号・価格衝突と検証を再確認します。force-pushで相手の変更を消しません。
@@ -113,7 +113,7 @@ Webの予定タスクでは利用可能な接続ツールを使い、remote/sche
 すべて対象は `hm2236/jamio-news`。既存の [JSON Schema](../contracts/publishing.schema.json) の必須項目と上記の原典確認ルールを使います。production metadataの形もlocalと同じで、新しいmodeフィールドは不要です。予定タスクのコンテナでcloneやNodeが使えなければ、スクリプトを実行しようと繰り返さず以下へ進みます。
 
 1. `GET /repos/hm2236/jamio-news/git/ref/heads/main` またはbranch APIでmain SHAを取得し、そのrefでREADME・本手順・編集方針・契約・過去号・価格履歴を読みます。取得したSHAを `baseSha` として記録。同日の号・dailyブランチ・PR・通知台帳を確認します。既存の公開号は再作成せず確認/通知再開。同じ版の異なる内容は自動上書きせず別の訂正PRへ引き継ぎます。
-2. 原典を実際に読み、5件の重要記事を選択します。正確に5件のTop 5が必要で、架空・未閲覧・埋め草は禁止です。十分な記事がなければblockedで停止。X取得不可なら `production.x.status=unavailable` と理由・代替出典。partialは実際に取得できた範囲だけを出典にします。検証が事実の真偽を自動保証するわけではありません。
+2. 原典を実際に読み、重要記事を選択します。朝刊・昼刊・legacyは正確に5件のTop 5が必要です。明示夕刊だけは重要更新1〜5件で発行し、重要更新がなければ見送ります。架空・未閲覧・埋め草は禁止です。必要な記事や出典が不足する場合はblockedで停止。X取得不可なら `production.x.status=unavailable` と理由・代替出典。partialは実際に取得できた範囲だけを出典にします。検証が事実の真偽を自動保証するわけではありません。
 3. `POST /git/refs` の `ref=refs/heads/daily/<edition-slug>, sha=baseSha` で同日ブランチだけを作成。既存ブランチは再利用してparent SHAを読み直します。mainのrefを直接更新しません。forkや別名ブランチで日刊ガードを回避しません。
 4. 最終Markdownを `content/articles/<edition-slug>-<story>.md` と `content/editions/<edition-slug>.md` に直接書きます。記事・号の日付、JST実確認時刻、全slug参照、source/status、production.x、本文はlocalと同一契約。実観測がある場合だけ `data/prices.json` の完全な既存配列を保って観測を追記します。観測なしならそのファイルを変更しません。未完成草稿、validation metadata、ログなどの追加ファイルを書きません。
 5. 推奨はGit Data APIのblob → 現在のbranch commitのtreeをbaseにしたtree → parentを現在のbranch SHAとするcommit → `PATCH /git/refs/heads/daily/<edition-slug>`（force=false）の順で、全最終ファイルを1コミットで更新します。Contents APIでファイルごとに書く場合はbranch指定と現在blob SHAによる衝突検出を使い、全件を書き終えた最後のbranch SHAを `headSha` として記録します。途中コミットのCIを最終検証に使いません。mainが進んだら最新mainを取り込み、再度CIを待ちます。
@@ -149,3 +149,9 @@ CI失敗・権限不足はblocked、進行中/receiptのキャッシュ待ちは
 GitHubには日刊PRの信頼済みガードと検証・ビルド・Pages公開を実装しています。GitHub内でニュースを自律収集する予定実行やAI生成、チャット配信は追加していません。
 
 参考：[GitHub Actionsのscheduleイベント](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)。
+
+## 必要時の夕刊と表示
+
+17:00 JSTの編集判断は[編集方針](editorial-policy.md#朝刊と必要時の夕刊)に従い、発行する場合だけ明示evening版を制作します。夕刊は記事・top5とも1〜5件、heroはその号の記事です。空の夕刊や埋め草は作りません。チェック・apply・日刊ガード・buildで同じ版別契約を検証し、公開確認は従来どおりslug/variant/URL/digestと正確なmain SHAを照合します。最終通知も実際の本数の主要ニュースと完全版URLを使用します。
+
+トップは最新号の一面・トップニュースを表示し、同日の公開済み版だけ切り替えます。天気は共通パネルのままです。「今日の重要ニュース」は同日の各版のheroとtop5を重複なしで残し、過去号では「この日の重要ニュース」と表示します。アーカイブは日付ごとにまとめ、旧形式URL・タイトル・データ・digestは変更しません。legacyを朝刊と推測しません。この手順ファイルは予定タスク自体を登録・変更しません。

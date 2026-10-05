@@ -31,9 +31,9 @@ function repository(t) {
   fs.writeFileSync(path.join(root,'data/prices.json'),'[]\n');
   return root;
 }
-function draft(root,id=slug,published='17:18:00') {
+function draft(root,id=slug,published='17:18:00',count=5) {
   const identity=editionIdentity(id), init=initDraft(root,id);
-  const articles=Array.from({length:5},(_,i)=>({slug:`${id}-fixture-${i}`,title:`${identity.variant} fixture ${i}`,summary:'Synthetic test only',category:i===0?'vr':'ai',tags:['fixture'],status:'verified',kind:'news',published:`${identity.date}T${published}+09:00`,verificationNote:'Test only',sources:[{title:'Fixture',type:'official',url:'https://fixture.example.jp/',checked:`${identity.date}T07:00:00+09:00`}],body:'\nSynthetic test body.\n'}));
+  const articles=Array.from({length:count},(_,i)=>({slug:`${id}-fixture-${i}`,title:`${identity.variant} fixture ${i}`,summary:'Synthetic test only',category:i===0?'vr':'ai',tags:['fixture'],status:'verified',kind:'news',published:`${identity.date}T${published}+09:00`,verificationNote:'Test only',sources:[{title:'Fixture',type:'official',url:'https://fixture.example.jp/',checked:`${identity.date}T07:00:00+09:00`}],body:'\nSynthetic test body.\n'}));
   const refs=articles.map(a=>a.slug);
   const edition={...identity,priceKeys:[],title:`Fixture ${identity.variant}`,kind:'daily',published:`${identity.date}T${published}+09:00`,top5:refs.slice(),hero:refs[0],articles:refs,deals:[],production:{contractVersion:1,x:{status:'unavailable',note:'Test only'}},body:'\nSynthetic edition.\n'};
   const observations=[];
@@ -65,7 +65,7 @@ test('variant guard accepts fresh evening alongside noon but rejects existing ar
   for(const file of [`content/editions/${date}.md`,`content/editions/${date}-noon.md`,`content/articles/${date}-old.md`,'scripts/build.mjs','contracts/publishing.schema.json','.github/workflows/pages.yml'])assert.throws(()=>guardPaths(branch,[...changes,change(file)]),/forbidden/);
   const candidate=addCandidate(r,f);candidate.editions.at(-1).articles[0]=r.editions.at(-1).articles[0];assert.throws(()=>validateDailyChange(branch,changes,r,candidate));
   assert.throws(()=>validateDailyChange(branch,changes,addCandidate(r,f),addCandidate(r,f)),/already exists/);
-  f.edition.top5.pop();assert.throws(()=>validateDailyChange(branch,changes,r,addCandidate(r,f)),/too few|トップ5/);
+  f.edition.top5=[];assert.throws(()=>validateDailyChange(branch,changes,r,addCandidate(r,f)),/too few|トップニュース/);
 });
 test('price keys prevent cross-edition digest drift, preserve append-only history, and require exact retries',t=>{
   const root=repository(t),first=draft(root,'2026-10-06-morning','18:00:00');first.observations.push(row('2026-10-06'));first.edition.priceKeys=first.observations.map(priceKey);first.save();applyDraft(root,first.folder);
@@ -84,6 +84,55 @@ test('variant builds select published order and keep both URLs in archive, RSS, 
   const search=JSON.parse(read('search.json')).find(a=>a.title===f.articles[0].title);assert.equal(search.editions[0].variant,'evening');assert.equal(search.editions[0].url,`/jamio-news/editions/${slug}/`);
   const manifest=JSON.parse(read('publication.json'));const entry=manifest.editions.find(e=>e.slug===slug);assert.equal(entry.date,date);assert.equal(entry.variant,'evening');assert.ok(read(`editions/${slug}/index.html`).includes(entry.digest));assert.equal(manifest.editions[0].slug,slug);
   assert.equal([morning.edition,f.edition].sort(newestEdition)[0].slug,slug);
+  assert.match(home,/<h1>最新号<\/h1>/);
+  assert.ok(home.includes(`data-edition-panel="${slug}"><div class="issue-heading"`));
+  assert.ok(home.includes(`data-edition-panel="${date}-morning" hidden`));
+  assert.ok(home.includes(`data-edition-switch="${date}-morning">朝刊</a>`));
+  assert.ok(home.includes(`data-edition-switch="${slug}">夕刊</a>`));
+  assert.equal((home.match(/id="weather-data"/g)??[]).length,1);
+  const important=home.split('<section class="day-news">')[1].split('</section>')[0];
+  for(const a of [...morning.articles,...f.articles])assert.ok(important.includes(`/articles/${a.slug}/`));
+  const archive=read('archive/index.html');assert.equal((archive.match(/<section class="archive-day">/g)??[]).length,2);
+  const day=archive.split(`datetime="${date}"`)[1].split('</section>')[0];
+  for(const id of [date,slug,`${date}-morning`])assert.ok(day.includes(`/editions/${id}/`));
+  assert.ok(read(`editions/${slug}/index.html`).includes(`>${date}</time> 夕刊`));
+  assert.ok(read(`editions/${date}-morning/index.html`).includes(`>${date}</time> 朝刊`));
+  assert.ok(read(`editions/${date}/index.html`).includes('じゃみお昼刊'));
+  assert.ok(read(`editions/${date}/index.html`).includes(`>${date}</time> 旧形式号`));
+});
+test('evenings with 1-5 stories pass local, daily guard, build and exact publication proof',async t=>{
+  for(const count of [1,2,3,4,5]){
+    const root=repository(t),r=loadRepository(root),f=draft(root,slug,'17:18:00',count);
+    const receipt=validateDailyChange(`daily/${slug}`,changesFor(f),r,addCandidate(r,f));
+    const applied=applyDraft(root,f.folder);assert.equal(applied.digest,receipt.digest);
+    assert.equal(applyDraft(root,f.folder).status,'unchanged');
+    execFileSync(process.execPath,['scripts/build.mjs'],{cwd:root,env:{...process.env,GITHUB_SHA:commit}});
+    const manifest=JSON.parse(fs.readFileSync(path.join(root,'dist/publication.json')));
+    const html=fs.readFileSync(path.join(root,`dist/editions/${slug}/index.html`),'utf8');
+    assert.equal((html.match(/class="number"/g)??[]).length,count);
+    assert.equal(manifest.editions[0].digest,receipt.digest);
+    const request=async url=>new Response(url.includes('publication.json')?JSON.stringify(manifest):html);
+    assert.equal((await verifyDeployment(root,commit,{request})).verifiedEdition.slug,slug);
+  }
+});
+test('empty or oversized evenings and shortened morning, noon or legacy editions fail before writes',t=>{
+  for(const [variant,count]of [['evening',0],['evening',6],['morning',4],['noon',4],['legacy',4]]){
+    const root=repository(t),id=variant==='legacy'?'2026-10-06':`2026-10-06-${variant}`,f=draft(root,id,'17:18:00',count),r=loadRepository(root);
+    assert.throws(()=>planDraft(root,f.folder));
+    assert.throws(()=>validateDailyChange(`daily/${id}`,changesFor(f),r,addCandidate(r,f)));
+    assert.equal(fs.existsSync(path.join(root,`content/editions/${id}.md`)),false);
+  }
+});
+test('a newer morning with no evening displays only morning and leaves previous evenings in the archive',t=>{
+  const root=repository(t),evening=draft(root);applyDraft(root,evening.folder);
+  const morning=draft(root,'2026-10-06-morning','07:00:00');applyDraft(root,morning.folder);
+  execFileSync(process.execPath,['scripts/build.mjs'],{cwd:root,env:{...process.env,GITHUB_SHA:commit}});
+  const home=fs.readFileSync(path.join(root,'dist/index.html'),'utf8');
+  assert.ok(home.includes('2026.10.06 · 朝刊'));
+  assert.equal((home.match(/data-edition-switch=/g)??[]).length,1);
+  assert.ok(home.includes('data-edition-switch="2026-10-06-morning">朝刊</a>'));
+  assert.equal(home.includes('夕刊なし'),false);assert.equal(home.includes('今日の重要ニュース'),false);
+  assert.equal(home.includes(`data-edition-panel="${slug}"`),false);
 });
 function proof() {
   const repo={full_name:'hm2236/jamio-news'},identity=editionIdentity(slug),digest='d'.repeat(64),editionUrl=`https://hm2236.github.io/jamio-news/editions/${slug}/`;

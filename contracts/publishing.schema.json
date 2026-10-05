@@ -2,16 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hm2236.github.io/jamio-news/contracts/publishing.schema.json",
   "title": "JAMIO NEWS daily publishing contract v1",
-  "description": "Normalized draft package. Markdown uses JSON front matter; slug and body are derived from the file. Structural validation is not fact verification. Qualified edition slugs require matching date, variant and priceKeys; legacy metadata is unchanged.",
+  "description": "Normalized draft package. Markdown uses JSON front matter; slug and body are derived from the file. Structural validation is not fact verification. Qualified edition slugs require matching date, variant and priceKeys; legacy metadata is unchanged. Explicit evening editions accept 1-5 articles and top stories; other editions retain five top stories.",
   "type": "object",
   "additionalProperties": false,
   "required": ["date", "edition", "articles", "priceObservations"],
   "properties": {
     "date": {"type": "string", "format": "date"},
     "edition": {"$ref": "#/$defs/edition"},
-    "articles": {"type": "array", "minItems": 5, "items": {"$ref": "#/$defs/article"}},
+    "articles": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/article"}},
     "priceObservations": {"type": "array", "items": {"$ref": "#/$defs/price"}}
   },
+  "if": {"properties": {"edition": {"required": ["variant"], "properties": {"variant": {"const": "evening"}}}}},
+  "then": {"properties": {"articles": {"maxItems": 5}}},
+  "else": {"properties": {"articles": {"minItems": 5}}},
   "$defs": {
     "text": {"type": "string", "minLength": 1, "pattern": "\\S"},
     "jst": {"type": "string", "format": "jst-date-time"},
@@ -40,13 +43,16 @@
         "priceKeys": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
         "title": {"$ref": "#/$defs/text"}, "kind": {"const": "daily"},
         "published": {"$ref": "#/$defs/jst"},
-        "top5": {"$ref": "#/$defs/slugs", "minItems": 5, "maxItems": 5},
+        "top5": {"$ref": "#/$defs/slugs", "minItems": 1, "maxItems": 5},
         "hero": {"type": "string", "pattern": "^[a-z0-9-]+$"},
-        "articles": {"$ref": "#/$defs/slugs", "minItems": 5},
+        "articles": {"$ref": "#/$defs/slugs", "minItems": 1},
         "deals": {"$ref": "#/$defs/slugs"},
         "production": {"$ref": "#/$defs/production"},
         "body": {"$ref": "#/$defs/text"}
-      }
+      },
+      "if": {"required": ["variant"], "properties": {"variant": {"const": "evening"}}},
+      "then": {"properties": {"articles": {"maxItems": 5}}},
+      "else": {"properties": {"top5": {"minItems": 5}, "articles": {"minItems": 5}}}
     },
     "source": {
       "type": "object", "additionalProperties": false, "required": ["title", "type", "url", "checked"],
@@ -100,7 +106,7 @@
     "draftFiles": ["drafts/YYYY-MM-DD/edition.md", "drafts/YYYY-MM-DD/articles/YYYY-MM-DD-<slug>.md", "drafts/YYYY-MM-DD/prices.json"],
     "publishedFiles": ["content/editions/YYYY-MM-DD.md", "content/articles/YYYY-MM-DD-<slug>.md", "data/prices.json"],
     "commands": ["node scripts/new-edition.mjs YYYY-MM-DD", "node scripts/daily.mjs check drafts/YYYY-MM-DD", "node scripts/daily.mjs apply drafts/YYYY-MM-DD", "node scripts/validate.mjs", "node --test", "node scripts/build.mjs", "node scripts/daily.mjs confirm <edition-slug> <merged-main-sha>"],
-    "failure": "Nonzero exit and JSON status=failed. Do not merge or claim publication. No fabricated news/prices/X retrieval; fewer than five sourced stories means no edition.",
+    "failure": "Nonzero exit and JSON status=failed. Do not merge or claim publication. No fabricated news/prices/X retrieval; morning/noon/legacy require five top stories, evening permits 1-5 sourced articles only when editorially warranted.",
     "idempotency": "Identical same-edition package is unchanged; differing content or observations is a conflict. Explicit morning/noon/evening editions may coexist with a legacy issue. Every prior digest must remain unchanged. Corrections require a separate reviewed PR with updated/corrections.",
     "success": "JSON status=published, date, editionUrl, commit, digest, workflowUrl; only after successful Pages workflow for that main SHA and matching public publication.json and edition HTML.",
     "editionUrl": "https://hm2236.github.io/jamio-news/editions/<edition-slug>/"
