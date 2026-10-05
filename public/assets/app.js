@@ -7,6 +7,17 @@ syncTheme();
 theme?.addEventListener('click',()=>{const mode=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');const next=mode==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('jamio-theme',next);}catch{}syncTheme();});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',syncTheme);
 initWeather();
+// Keep real edition links as the no-JavaScript fallback; weather stays shared.
+const editionSwitches=[...document.querySelectorAll('[data-edition-switch]')];
+for(const link of editionSwitches)link.addEventListener('click',event=>{
+ if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+ const slug=link.dataset.editionSwitch;
+ const panels=[...document.querySelectorAll('[data-edition-panel]')];
+ if(!panels.some(panel=>panel.dataset.editionPanel===slug))return;
+ event.preventDefault();
+ for(const panel of panels)panel.hidden=panel.dataset.editionPanel!==slug;
+ for(const item of editionSwitches){if(item===link)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');}
+});
 if($('#search-form')){
  const query=$('#query'),category=$('#category'),status=$('#status'),count=$('#search-count'),results=$('#results');
  const params=new URLSearchParams(location.search);query.value=params.get('q')||params.get('tag')||'';category.value=params.get('category')||'';status.value=params.get('status')||'';

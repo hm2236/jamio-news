@@ -38,11 +38,12 @@ export function validate(articles, editions, config) {
   }
   const editionSlugs = new Set();
   for (const e of editions) {
-    const {date} = validateEditionIdentity(e);
+    const {date, variant} = validateEditionIdentity(e);
     if (editionSlugs.has(e.slug)) throw new Error(`Duplicate edition: ${e.slug}`);
     editionSlugs.add(e.slug);
     if (!isJST(e.published) || e.published.slice(0,10)!==date || !e.title || !['launch','daily'].includes(e.kind)) throw new Error(`${e.slug}: 無効な朝刊`);
-    if (!Array.isArray(e.top5) || e.top5.length !== 5 || new Set(e.top5).size !== 5 || !Array.isArray(e.articles) || new Set(e.articles).size !== e.articles.length || !e.top5.every(s => e.articles.includes(s)) || !e.articles.every(s => slugs.has(s)) || !e.articles.includes(e.hero)) throw new Error(`${e.slug}: トップ5・一面・記事参照を確認してください`);
+    const evening = variant === 'evening';
+    if (!Array.isArray(e.top5) || e.top5.length < (evening ? 1 : 5) || e.top5.length > 5 || new Set(e.top5).size !== e.top5.length || !Array.isArray(e.articles) || (evening && e.articles.length > 5) || new Set(e.articles).size !== e.articles.length || !e.top5.every(s => e.articles.includes(s)) || !e.articles.every(s => slugs.has(s)) || !e.articles.includes(e.hero)) throw new Error(`${e.slug}: トップニュース・一面・記事参照を確認してください`);
     if (e.kind === 'daily' && e.articles.some(s => articles.find(a => a.slug === s).kind !== 'news')) throw new Error(`${e.slug}: 日刊号に開設ガイドを入れないでください`);
     if (!Array.isArray(e.deals) || !e.deals.every(s => e.articles.includes(s) && articles.find(a=>a.slug===s).category==='deals')) throw new Error(`${e.slug}: セール参照が無効です`);
     if (e.kind === 'daily') validateDailyEdition(articles,e);

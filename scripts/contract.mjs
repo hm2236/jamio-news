@@ -44,6 +44,12 @@ export function assertSchema(value, schema = contract, location = '$') {
   if (schema.maxItems !== undefined && value.length > schema.maxItems) fail('too many items');
   if (schema.uniqueItems && new Set(value.map(v => JSON.stringify(v))).size !== value.length) fail('duplicate items');
   if (schema.items) value.forEach((item, i) => assertSchema(item, schema.items, `${location}[${i}]`));
+  if (schema.if) {
+    let matches = true;
+    try { assertSchema(value, schema.if, location); } catch { matches = false; }
+    const branch = matches ? schema.then : schema.else;
+    if (branch) assertSchema(value, branch, location);
+  }
 }
 
 export function validateDailyEdition(articles, edition) {
