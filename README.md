@@ -2,7 +2,7 @@
 
 じゃみお向け個人ニュースサイト。毎日の「じゃみお朝刊」をMarkdownで蓄積し、GitHub Pagesで静的配信します。
 
-- トップ：3分で読むトップ5、今日のいちき串木野の天気、一面、重要セール。
+- トップ：3分で読むトップ5、今日の現在地付近の天気（未取得時はいちき串木野）、一面、重要セール。
 - AI / テック、PC・半導体、VR機器・VRChat（VRC）、価格ウォッチ / セール、鹿児島・いちき串木野、経済・生活、過去号、注目テーマ。
 - スマホ対応、システム連動＋手動ダークモード、本文検索、タグ、RSS。
 - 確認済み事実 / 報道 / 未確認情報の表示。出典・検証メモ・訂正履歴。
@@ -93,7 +93,11 @@ node scripts/build.mjs
 
 GitHub Settings → Pages → Build and deployment → Source を **GitHub Actions** に設定します。`main`への更新でテスト→ビルド→Pages公開を実行し、PRでは検証のみ実行します。公開URLの変更時は `site.config.json` の `url`（末尾 `/`）を更新。`SITE_URL`でも上書きできます。
 
-公式参考：[GitHub Pagesのカスタムワークフロー](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Open-Meteo Forecast API](https://open-meteo.com/en/docs)。天気の地域は `public/assets/app.js` のAPI URLで設定します。
+公式参考：[GitHub Pagesのカスタムワークフロー](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Open-Meteo Forecast API](https://open-meteo.com/en/docs)。天気の処理は `public/assets/weather.js` にあります。
+
+初回のトップ閲覧時にブラウザのGeolocation APIで位置情報の許可を要求し、取得できた場合は現在地付近の予報に切り替えます。許可待ち・拒否・未対応・取得失敗時はいちき串木野の予報を維持し、状態を表示します。「現在地を再取得」で再試行できます（拒否を解除するにはブラウザ設定の変更が必要な場合があります）。現在地の天気取得に失敗した場合もいちき串木野へ戻ります。フォールバックの取得失敗時は取得不可と気象庁リンクを表示します。JavaScript無効時は天気取得も位置情報要求も行いません。
+
+位置情報は表示のためだけに使い、小数点以下2桁に丸めた概略座標をブラウザから既存のOpen-Meteo公開APIへ直接送信します。サイトのサーバー・リポジトリ・ブラウザストレージに保存せず、画面やページURLにも露出させません。新規の有料API・秘密鍵は不要です。現在地の予報日付はAPIが返す地点のタイムゾーンで今日か確認し、取得時刻は従来どおりJSTで表示します。外部APIの取扱いは[Open-Meteoのプライバシーポリシー](https://open-meteo.com/en/privacy)を参照してください。
 
 ## 毎朝06:00開始・07:00公開への引き継ぎ
 
