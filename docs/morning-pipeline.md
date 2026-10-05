@@ -1,5 +1,7 @@
 # 06:00 JST制作開始・07:00 JST公開目標のハンドオフ
 
+自動刊行の段階導入は[Autonomous Publication v1](autonomous-publication.md)を参照。GitHub側のread-only scheduled shadow収集を追加し、既存ChatGPT予定タスクを維持します。shadowは制作・公開成功ではありません。本稿の既存daily guard/CI/merge/receipt規則を引き続き正本として使い、新しいLLM API課金を追加しません。
+
 毎日06:00・Asia/TokyoにChatGPT予定タスクが制作を開始し、調査 → 原典検証 → Markdown/価格観測 → GitHub PR → Actions検証 → マージ → Pages確認 → トップ5と完全版URLの順で、07:00 JSTまでの公開を目指します。GitHubは保存・検証・公開のバックエンドです。調査・生成はChatGPT予定タスクが担当し、OpenAI API課金や外部AI APIキーは追加しません。期限が来ても検証を省略せず、未完了はpending/blocked/lateと報告します。
 
 ## 同日複数版の識別と互換性
