@@ -1,0 +1,74 @@
+name: Discovery Radar capture shadow
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: discovery-radar-shadow-main
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: github.repository == 'hm2236/jamio-news' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Select bounded successful prior state candidates
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/discovery-radar.mjs plan
+      - name: Download latest prior successful rolling state
+        if: steps.plan.outputs.rolling-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.plan.outputs.rolling-run }}
+          artifact-ids: ${{ steps.plan.outputs.rolling-id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/discovery-radar/prior-rolling
+      - name: Download latest prior successful recovery checkpoint
+        if: steps.plan.outputs.checkpoint-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.plan.outputs.checkpoint-run }}
+          artifact-ids: ${{ steps.plan.outputs.checkpoint-id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/discovery-radar/prior-checkpoint
+      - name: Capture fixed sources without external credentials
+        id: capture
+        run: node scripts/discovery-radar.mjs capture
+      - name: Retain validated combined rolling payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/discovery-radar/rolling/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Recheck successful checkpoint before upload
+        if: steps.capture.outputs.checkpoint-planned == 'true'
+        id: checkpoint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECKPOINT_DATE: ${{ steps.capture.outputs.checkpoint-date }}
+        run: node scripts/discovery-radar.mjs checkpoint-check
+      - name: Retain compact JST recovery checkpoint
+        if: steps.checkpoint.outputs.upload == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-daily-checkpoint-${{ steps.capture.outputs.checkpoint-date }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/discovery-radar/checkpoint/
+          retention-days: ${{ steps.capture.outputs.checkpoint-retention }}
+          if-no-files-found: error

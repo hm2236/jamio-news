@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "hn-new",
+      "adapter": "hn-item-v1",
+      "lane": "discover",
+      "channelClass": "aggregator",
+      "cadenceSeconds": 3600,
+      "maxItems": 1,
+      "endpoint": "https://hacker-news.firebaseio.com/v0/newstories.json",
+      "maxBytes": 262144,
+      "contentTypes": [
+        "application/json"
+      ],
+      "retentionClass": "metadata-90d"
+    },
+    {
+      "id": "kagoshima-new",
+      "adapter": "kagoshima-feed-v1",
+      "lane": "sentinel",
+      "channelClass": "authority-local",
+      "cadenceSeconds": 3600,
+      "maxItems": 20,
+      "endpoint": "https://www.pref.kagoshima.jp/saishin/saishin.xml",
+      "maxBytes": 262144,
+      "contentTypes": [
+        "text/xml",
+        "application/xml",
+        "application/rss+xml",
+        "application/atom+xml",
+        "application/rdf+xml"
+      ],
+      "retentionClass": "metadata-90d",
+      "httpsEquivalence": [
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/ae06/kenko-fukushi/kenko-iryo/kenko/kagoshima21/yellowcard/kyoukagekkann.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/ae06/kenko-fukushi/kenko-iryo/kenko/kagoshima21/yellowcard/kyoukagekkann.html",
+          "verifiedAt": "2026-10-06T13:48:43.6711019Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:c79c9f4537dd583228a5b4e796ec2e18f438f98484dafb80ff45734887f8d542"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/ae06/kenko-fukushi/kenko-iryo/kenko/kagoshima21/yellowcard/kyosan-kikaku-waribiki-tokuten2.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/ae06/kenko-fukushi/kenko-iryo/kenko/kagoshima21/yellowcard/kyosan-kikaku-waribiki-tokuten2.html",
+          "verifiedAt": "2026-10-06T13:48:43.8597263Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:9609ee253b2cf60777332435535468530e394f911bc067ca6467176f41bc3659"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/aj01/bosai/kikikanri/torikumi/kikikannri/os26_nippou.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/aj01/bosai/kikikanri/torikumi/kikikannri/os26_nippou.html",
+          "verifiedAt": "2026-10-06T13:48:44.5577140Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:c75575a62f8448413751111c3c8f98418924d731bc696957c02a60a8b12d87f8"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/kyoiku-bunka/school/edu_infotec/jyoho/index.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/kyoiku-bunka/school/edu_infotec/jyoho/index.html",
+          "verifiedAt": "2026-10-06T13:48:45.3029998Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:6a63a04e0fc1fb0eed03c188f778f6bf1cdcf02e75529c6b02ab88452470268b"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/an12/shiitakeryouri.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/an12/shiitakeryouri.html",
+          "verifiedAt": "2026-10-06T13:48:45.5310441Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:a49556672f4673ec58f74f8409522f2e336e04a5aa3f9ff8625688c7a4d6d669"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/ae07/kenko-fukushi/syogai-syakai/ziritushien/oshirase/kakutan27.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/ae07/kenko-fukushi/syogai-syakai/ziritushien/oshirase/kakutan27.html",
+          "verifiedAt": "2026-10-06T13:48:45.9462673Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:97c1384a672bd84c0c5a262d8f3b337aadc997baf4b670e6d481d0e8b451f8da"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/aj03/rinnyakasai.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/aj03/rinnyakasai.html",
+          "verifiedAt": "2026-10-06T13:48:46.1393755Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:953b9db0ed534ef7de8f028188662719877138d5023023e2241fe1031ced3a9e"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/ab15/minnakaigi-r8tarumizu.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/ab15/minnakaigi-r8tarumizu.html",
+          "verifiedAt": "2026-10-06T13:48:46.3183050Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:a0239cad8f4e20b2901c52e285467ff10a69e2c0c03032f247e82c9ad3c5e00c"
+        },
+        {
+          "httpsUrl": "https://www.pref.kagoshima.jp/kensei/saiyo/index.html",
+          "sourceUrl": "http://www.pref.kagoshima.jp/kensei/saiyo/index.html",
+          "verifiedAt": "2026-10-06T13:48:46.5283685Z",
+          "httpsStatus": 200,
+          "method": "visible-text-and-canonical-url",
+          "httpStatus": 200,
+          "normalizedTextDigest": "sha256:2dce6e8bccad225da1e45bc6899eb2817c8d313e11290fe330032bfcb1f8e360"
+        }
+      ]
+    },
+    {
+      "id": "anthropic-news",
+      "adapter": "anthropic-index-v1",
+      "lane": "watch",
+      "channelClass": "publisher",
+      "cadenceSeconds": 7200,
+      "maxItems": 20,
+      "endpoint": "https://www.anthropic.com/news",
+      "maxBytes": 1048576,
+      "contentTypes": [
+        "text/html"
+      ],
+      "retentionClass": "metadata-90d"
+    }
+  ]
+}
