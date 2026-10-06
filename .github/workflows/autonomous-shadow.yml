@@ -27,6 +27,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/autonomous.mjs shadow shadow-output
+      - name: Prepare detached series input and unevaluated diagnostics
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/series-shadow.mjs prepare shadow-output/report.json series-shadow-output/${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Retain separate series proposal and evaluation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: series-proposal-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: series-shadow-output/${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Retain immutable shadow diagnostics
         if: always()
         uses: actions/upload-artifact@v4

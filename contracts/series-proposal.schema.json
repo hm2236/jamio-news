@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JAMIO detached series proposal shadow v1",
+  "description": "Untrusted editorial proposals only. Runtime requires an independently pinned submission digest, trusted input, morning evidence and live run fences. No registration or publication authority.",
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "mode", "binding", "proposals"],
+  "properties": {
+    "version": {"const": 1}, "mode": {"const": "read-only"},
+    "binding": {"$ref": "#/$defs/binding"},
+    "proposals": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/proposal"}}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["context", "runCreatedAt", "headSha", "inputDigest", "registryDigest", "sourceRegistryDigest", "snapshotsDigest", "corpusDigest", "reportDigest", "packageDigest", "evidenceDigest"],
+      "properties": {
+        "context": {"type": "object", "additionalProperties": false,
+          "required": ["runId", "attempt", "startedAt", "date", "slug", "baseSha", "windowStart"],
+          "properties": {
+            "runId": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+            "attempt": {"type": "integer", "minimum": 1},
+            "startedAt": {"type": "string", "format": "jst-date-time"},
+            "date": {"type": "string", "format": "date"},
+            "slug": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}-morning$"},
+            "baseSha": {"$ref": "#/$defs/sha"},
+            "windowStart": {"type": "string", "format": "jst-date-time"}
+          }
+        },
+        "runCreatedAt": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
+        "headSha": {"$ref": "#/$defs/sha"},
+        "inputDigest": {"$ref": "#/$defs/hash"}, "registryDigest": {"$ref": "#/$defs/hash"},
+        "sourceRegistryDigest": {"$ref": "#/$defs/hash"}, "snapshotsDigest": {"$ref": "#/$defs/hash"},
+        "corpusDigest": {"$ref": "#/$defs/hash"}, "reportDigest": {"$ref": "#/$defs/hash"},
+        "packageDigest": {"$ref": "#/$defs/hash"}, "evidenceDigest": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "entity": {
+      "type": "object", "additionalProperties": false, "required": ["type", "key", "label"],
+      "properties": {"type": {"enum": ["organization", "product", "campaign", "incident", "legislation", "project"]}, "key": {"$ref": "#/$defs/text"}, "label": {"$ref": "#/$defs/text"}}
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["canonicalTopic", "entities", "region", "productVersion", "incidentId", "campaignId"],
+      "properties": {
+        "canonicalTopic": {"type": "object", "additionalProperties": false, "required": ["key", "scope"], "properties": {"key": {"$ref": "#/$defs/slug"}, "scope": {"$ref": "#/$defs/text"}}},
+        "entities": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/entity"}},
+        "region": {"type": "string"}, "productVersion": {"type": "string"},
+        "incidentId": {"type": "string"}, "campaignId": {"type": "string"}
+      }
+    },
+    "citation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["url", "excerpt", "checked", "sourceDigest", "sourceRegistryDigest"],
+      "properties": {
+        "url": {"type": "string", "format": "source-url"}, "excerpt": {"type": "string", "minLength": 20, "maxLength": 600, "pattern": "\\S"},
+        "checked": {"type": "string", "format": "jst-date-time"},
+        "sourceDigest": {"$ref": "#/$defs/hash"}, "sourceRegistryDigest": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "identityEvidence": {
+      "type": "object", "additionalProperties": false, "required": ["field", "value", "citation"],
+      "properties": {"field": {"$ref": "#/$defs/text"}, "value": {"$ref": "#/$defs/text"}, "citation": {"$ref": "#/$defs/citation"}}
+    },
+    "comparison": {
+      "type": "object", "additionalProperties": false, "required": ["candidateSeriesId", "disposition", "reason"],
+      "properties": {"candidateSeriesId": {"$ref": "#/$defs/slug"}, "disposition": {"enum": ["match", "excluded", "ambiguous"]}, "reason": {"$ref": "#/$defs/text"}}
+    },
+    "publishedClaim": {
+      "type": "object", "additionalProperties": false, "required": ["article", "articleDigest", "excerpt", "disposition", "reason"],
+      "properties": {"article": {"$ref": "#/$defs/slug"}, "articleDigest": {"$ref": "#/$defs/hash"}, "excerpt": {"type": "string", "minLength": 20, "maxLength": 600}, "disposition": {"enum": ["same-target", "excluded", "ambiguous"]}, "reason": {"$ref": "#/$defs/text"}}
+    },
+    "proposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "article", "decision", "candidateSeriesId", "identity", "identityEvidence", "comparedCandidates", "comparedClaims", "novelty", "event", "citations", "reason", "confidence"],
+      "properties": {
+        "id": {"$ref": "#/$defs/slug"}, "article": {"$ref": "#/$defs/slug"},
+        "decision": {"enum": ["existing-update", "new-series", "related-only", "none", "needs-review"]},
+        "candidateSeriesId": {"type": "string"}, "identity": {"$ref": "#/$defs/identity"},
+        "identityEvidence": {"type": "array", "items": {"$ref": "#/$defs/identityEvidence"}},
+        "comparedCandidates": {"type": "array", "items": {"$ref": "#/$defs/comparison"}},
+        "comparedClaims": {"type": "array", "items": {"$ref": "#/$defs/publishedClaim"}},
+        "previousIdentity": {"$ref": "#/$defs/identity"},
+        "novelty": {"type": "object", "additionalProperties": false, "required": ["kind", "delta", "continuityReason"], "properties": {"kind": {"enum": ["new-event", "material-update", "no-change", "uncertain"]}, "delta": {"type": "string"}, "continuityReason": {"type": "string"}, "previousArticle": {"$ref": "#/$defs/slug"}}},
+        "event": {"type": "object", "additionalProperties": false, "required": ["key", "url", "at", "updateType"], "properties": {
+          "key": {"$ref": "#/$defs/text"}, "url": {"type": "string", "format": "source-url"}, "at": {"type": "string", "format": "jst-date-time"},
+          "updateType": {"enum": ["announcement", "rollout", "release", "review", "outage", "recovery", "postmortem", "deliberation", "enactment", "effective", "other"]},
+          "milestone": {"type": "object", "additionalProperties": false, "required": ["label"], "properties": {"label": {"$ref": "#/$defs/text"}, "ordinal": {"type": "integer", "minimum": 1}}}
+        }},
+        "citations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/citation"}},
+        "reason": {"$ref": "#/$defs/text"}, "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

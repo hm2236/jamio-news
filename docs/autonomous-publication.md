@@ -2,7 +2,7 @@
 
 追跡Issue: [#15](https://github.com/hm2236/jamio-news/issues/15)。現段階は **read-only shadow**。既存ChatGPT予定タスクを編集制作者として維持し、新しいLLM API課金・キーは導入しない。GitHub ActionsでLLMが動くと仮定しない。自動マージ・日刊候補PR・本番刊行・チャット通知はこの実装から実行しない。
 
-シリーズ判定の将来拡張は[連続ニュースの設計](news-series-design.md)と[Issue #18](https://github.com/hm2236/jamio-news/issues/18)で追跡します。現行shadowの朝刊限定・fresh eventUrl条件は維持し、detached提案と専用validatorを別段階で導入します。guarded付与は本稿の全本番ゲートに加え、activeシリーズへのappend限定・証拠binding・別navigation receiptを必要とします。現行daily guardの許可範囲はまだ変更しません。
+シリーズ判定は[連続ニュースの設計](news-series-design.md)、[段階2のdetached proposal shadow](news-series-shadow.md)、[Issue #18](https://github.com/hm2236/jamio-news/issues/18)で追跡します。現行shadowの朝刊限定・fresh eventUrl条件を維持し、提案を公開データと分離して検証します。LLM自動接続と7連続日の実評価は未完了です。guarded付与は本稿の全本番ゲートに加え、activeシリーズへのappend限定・証拠binding・別navigation receiptを必要とします。現行daily guardの許可範囲はまだ変更しません。
 
 ## 現状監査（2026-10-06 JST）
 

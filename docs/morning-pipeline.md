@@ -2,7 +2,7 @@
 
 自動刊行の段階導入は[Autonomous Publication v1](autonomous-publication.md)を参照。GitHub側のread-only scheduled shadow収集を追加し、既存ChatGPT予定タスクを維持します。shadowは制作・公開成功ではありません。本稿の既存daily guard/CI/merge/receipt規則を引き続き正本として使い、新しいLLM API課金を追加しません。
 
-日をまたぐ続報は[連続ニュースのシリーズ設計](news-series-design.md)と[段階1の表示・人手登録・追加公開証明](news-series-display.md)を参照。sidecarから前後リンクをbuild時導出します。通常の日刊ではseries metadata/sidecarを追加せず、登録は別の人手レビューPRです。series公開完了はexact merged mainのPages成功と既存edition証明に加え `JAMIO_SERIES_PUBLIC_RECEIPT` のregistry/navigation digest・revision・URL・HTMLを照合します。既存号・記事・digestを変えず、同じ企業という理由だけで既刊記事を再掲しません。LLM提案と自動付与は未導入です。
+日をまたぐ続報は[連続ニュースのシリーズ設計](news-series-design.md)、[段階1の表示・人手登録・追加公開証明](news-series-display.md)、[段階2のdetached提案と評価基盤](news-series-shadow.md)を参照。sidecarから前後リンクをbuild時導出します。通常の日刊ではseries metadata/sidecarを追加せず、登録は別の人手レビューPRです。series公開完了はexact merged mainのPages成功と既存edition証明に加え `JAMIO_SERIES_PUBLIC_RECEIPT` のregistry/navigation digest・revision・URL・HTMLを照合します。既存号・記事・digestを変えず、同じ企業という理由だけで既刊記事を再掲しません。提案はread-only検証のみで、LLM自動接続・7日評価・自動付与は未完了です。
 
 毎日06:00・Asia/TokyoにChatGPT予定タスクが制作を開始し、調査 → 原典検証 → Markdown/価格観測 → GitHub PR → Actions検証 → マージ → Pages確認 → トップ5と完全版URLの順で、07:00 JSTまでの公開を目指します。GitHubは保存・検証・公開のバックエンドです。調査・生成はChatGPT予定タスクが担当し、OpenAI API課金や外部AI APIキーは追加しません。期限が来ても検証を省略せず、未完了はpending/blocked/lateと報告します。
 
