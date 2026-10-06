@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "sources": [
+    {"id":"openai","category":"ai","type":"official","url":"https://openai.com/news/","hosts":["openai.com"]},
+    {"id":"anthropic","category":"ai","type":"official","url":"https://www.anthropic.com/news","hosts":["www.anthropic.com"]},
+    {"id":"google","category":"ai","type":"blog","url":"https://blog.google/innovation-and-ai/technology/ai/","hosts":["blog.google"]},
+    {"id":"llama-cpp","category":"ai","type":"github","url":"https://github.com/ggml-org/llama.cpp/releases","hosts":["github.com"],"pathPrefix":"/ggml-org/llama.cpp/"},
+    {"id":"nvidia","category":"hardware","type":"blog","url":"https://blogs.nvidia.com/","hosts":["blogs.nvidia.com"]},
+    {"id":"amd","category":"hardware","type":"official","url":"https://newsroom.amd.com/","hosts":["newsroom.amd.com"]},
+    {"id":"intel","category":"hardware","type":"official","url":"https://www.intel.com/content/www/us/en/newsroom/home.html","hosts":["www.intel.com"],"pathPrefix":"/content/www/us/en/newsroom/"},
+    {"id":"meta","category":"vr","type":"official","url":"https://www.meta.com/blog/","hosts":["www.meta.com"],"pathPrefix":"/blog/"},
+    {"id":"vrchat","category":"vr","type":"official","url":"https://docs.vrchat.com/","hosts":["docs.vrchat.com"]},
+    {"id":"vrchat-creator","category":"vr","type":"official","url":"https://vcc.docs.vrchat.com/news/","hosts":["vcc.docs.vrchat.com"],"pathPrefix":"/news/"},
+    {"id":"dospara","category":"deals","type":"official","url":"https://www.dospara.co.jp/","hosts":["www.dospara.co.jp"]},
+    {"id":"kagoshima","category":"local","type":"official","url":"https://www.pref.kagoshima.jp/","hosts":["www.pref.kagoshima.jp"]},
+    {"id":"ichikikushikino","category":"local","type":"official","url":"https://www.city.ichikikushikino.lg.jp/","hosts":["www.city.ichikikushikino.lg.jp"]},
+    {"id":"jma","category":"local","type":"official","url":"https://www.jma.go.jp/jma/press/","hosts":["www.jma.go.jp"],"pathPrefix":"/jma/press/"},
+    {"id":"boj","category":"life","type":"official","url":"https://www.boj.or.jp/","hosts":["www.boj.or.jp"]}
+  ]
+}

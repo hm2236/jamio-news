@@ -1,5 +1,6 @@
 dist/
 drafts/
 node_modules/
+shadow-output/
 .env*
 !.env.example
