@@ -1,0 +1,835 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Discovery Radar Tranche 0A detached capture/state contract",
+  "description": "Issue #27 §17 is authoritative. Each payload is validated against its named definition. State stores only identity/time/channel facts; seen rows are checked against the unique Observation ledger. No Event, Claim, RadarBrief or publication authority.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/observation"
+    },
+    {
+      "$ref": "#/$defs/state"
+    },
+    {
+      "$ref": "#/$defs/manifest"
+    },
+    {
+      "$ref": "#/$defs/report"
+    }
+  ],
+  "$defs": {
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "attempt",
+        "headSha"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "headSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        }
+      }
+    },
+    "imported": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "runId",
+        "attempt",
+        "kind",
+        "stateDigest"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "enum": [
+            "rolling",
+            "checkpoint"
+          ]
+        },
+        "stateDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "seen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identifierKey",
+        "firstSeenAt90d",
+        "lastSeenAt",
+        "uniqueObservationCount90d",
+        "firstObservationId90d",
+        "channelClasses"
+      ],
+      "properties": {
+        "identifierKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "firstSeenAt90d": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastSeenAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "uniqueObservationCount90d": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "firstObservationId90d": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "channelClasses": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "aggregator",
+              "authority-local",
+              "publisher"
+            ]
+          },
+          "maxItems": 3
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "observations",
+        "sourceCursors",
+        "seen"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "observations": {
+          "type": "object",
+          "maxProperties": 20000,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "firstAt",
+              "lastAt",
+              "seenAt",
+              "identifiers",
+              "channelClass"
+            ],
+            "properties": {
+              "firstAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "seenAt": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "maxItems": 10000
+              },
+              "identifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "maxItems": 2
+              },
+              "channelClass": {
+                "enum": [
+                  "aggregator",
+                  "authority-local",
+                  "publisher"
+                ]
+              }
+            }
+          }
+        },
+        "sourceCursors": {
+          "type": "object",
+          "maxProperties": 3,
+          "propertyNames": {
+            "enum": [
+              "hn-new",
+              "kagoshima-new",
+              "anthropic-news"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "seen": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/seen"
+          },
+          "maxItems": 40000
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "observationId",
+        "sourceId",
+        "adapterId",
+        "laneHint",
+        "channelClass",
+        "sourceItemId",
+        "canonicalUrl",
+        "sourceUrl",
+        "discoveredUrls",
+        "contentDigest",
+        "title",
+        "sourcePublishedAt",
+        "sourceUpdatedAt",
+        "sourceTimePrecision",
+        "capturedAt",
+        "observedAt",
+        "identifiers",
+        "retentionClass",
+        "snapshotLocator",
+        "fetchStatus",
+        "policyStatus"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "observationId": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sourceId": {
+          "enum": [
+            "hn-new",
+            "kagoshima-new",
+            "anthropic-news"
+          ]
+        },
+        "adapterId": {
+          "enum": [
+            "hn-item-v1",
+            "kagoshima-feed-v1",
+            "anthropic-index-v1"
+          ]
+        },
+        "laneHint": {
+          "enum": [
+            "watch",
+            "discover",
+            "sentinel"
+          ]
+        },
+        "channelClass": {
+          "enum": [
+            "aggregator",
+            "authority-local",
+            "publisher"
+          ]
+        },
+        "sourceItemId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonicalUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048
+        },
+        "sourceUrl": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "discoveredUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048
+          },
+          "maxItems": 1
+        },
+        "contentDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "sourcePublishedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceUpdatedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceTimePrecision": {
+          "enum": [
+            "date",
+            "datetime",
+            "unknown"
+          ]
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "identifiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "maxItems": 2
+        },
+        "retentionClass": {
+          "const": "metadata-90d"
+        },
+        "snapshotLocator": {
+          "const": null
+        },
+        "fetchStatus": {
+          "const": "ok"
+        },
+        "policyStatus": {
+          "const": "allowed"
+        }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "kind",
+        "repository",
+        "workflow",
+        "branch",
+        "producer",
+        "startedAt",
+        "completedAt",
+        "githubRetentionDays",
+        "retentionCapability",
+        "contractDigest",
+        "sourceConfigDigest",
+        "previousStateDigest",
+        "stateDigest",
+        "payloadDigest",
+        "stateEncoding",
+        "manifestDigest",
+        "imported",
+        "coldStart",
+        "health"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "enum": [
+            "rolling",
+            "checkpoint"
+          ]
+        },
+        "repository": {
+          "const": "hm2236/jamio-news"
+        },
+        "workflow": {
+          "const": ".github/workflows/discovery-radar-shadow.yml"
+        },
+        "branch": {
+          "const": "main"
+        },
+        "producer": {
+          "$ref": "#/$defs/producer"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "githubRetentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "retentionCapability": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "contractDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sourceConfigDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "previousStateDigest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stateDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "payloadDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "stateEncoding": {
+          "const": "brotli-canonical-json-v1"
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "imported": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/imported"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coldStart": {
+          "type": "boolean"
+        },
+        "health": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        }
+      }
+    },
+    "sourceHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceId",
+        "status",
+        "itemCount",
+        "classifications",
+        "requests"
+      ],
+      "properties": {
+        "sourceId": {
+          "enum": [
+            "hn-new",
+            "kagoshima-new",
+            "anthropic-news"
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "empty",
+            "skipped-not-due",
+            "error"
+          ]
+        },
+        "itemCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "classifications": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,80}$"
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "publicationAuthorized",
+        "run",
+        "health",
+        "seenState",
+        "importedState",
+        "sourceHealth",
+        "newObservationCount",
+        "duplicateObservationCount",
+        "perLaneCounts",
+        "newlySeenIdentifiers",
+        "failures",
+        "artifactBytes",
+        "requestCounts",
+        "responseBytes",
+        "githubRetentionDays",
+        "retentionCapability",
+        "checkpoint",
+        "rawSourceBodyPersistedBytes"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "publicationAuthorized": {
+          "const": false
+        },
+        "run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runId",
+            "attempt",
+            "headSha",
+            "startedAt",
+            "completedAt",
+            "runCreatedAt",
+            "event",
+            "scheduledSlotAt",
+            "scheduleDelaySeconds",
+            "scheduleDelayMethod"
+          ],
+          "properties": {
+            "runId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "headSha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "startedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "completedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "runCreatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "event": {
+              "enum": [
+                "schedule",
+                "workflow_dispatch"
+              ]
+            },
+            "scheduledSlotAt": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scheduleDelaySeconds": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scheduleDelayMethod": {
+              "enum": [
+                "latest-hourly-17-slot-before-run-creation",
+                "not-scheduled"
+              ]
+            }
+          }
+        },
+        "health": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "seenState": {
+          "enum": [
+            "ok",
+            "recovered-gap",
+            "cold-start"
+          ]
+        },
+        "importedState": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/imported"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceHealth": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceHealth"
+          },
+          "maxItems": 3
+        },
+        "newObservationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicateObservationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "perLaneCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "watch",
+            "discover",
+            "sentinel"
+          ],
+          "properties": {
+            "watch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "discover": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sentinel": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "newlySeenIdentifiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "maxItems": 82
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "code"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "rolling",
+                  "checkpoint"
+                ]
+              },
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "maxItems": 2
+        },
+        "artifactBytes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rolling",
+            "checkpoint"
+          ],
+          "properties": {
+            "rolling": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "checkpoint": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "requestCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "actions",
+            "sources"
+          ],
+          "properties": {
+            "actions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sources": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "responseBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "githubRetentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "retentionCapability": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "checkpoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "date",
+            "existingSuccessful",
+            "uploadPlanned",
+            "retentionDays"
+          ],
+          "properties": {
+            "date": {
+              "type": "string",
+              "format": "date"
+            },
+            "existingSuccessful": {
+              "type": "boolean"
+            },
+            "uploadPlanned": {
+              "type": "boolean"
+            },
+            "retentionDays": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 90
+            }
+          }
+        },
+        "rawSourceBodyPersistedBytes": {
+          "const": 0
+        }
+      }
+    }
+  }
+}
