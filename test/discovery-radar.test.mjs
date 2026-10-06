@@ -73,6 +73,8 @@ const invalidXml = [
   ['empty attribute name',withAttribute('="/test.html"')],
   ['illegal attribute name',withAttribute('1href="/test.html"')],
   ['multiple attribute colons',withAttribute('xml:a:b="x" href="/test.html"')],
+  ['inherited object name is not a declared prefix',withAttribute('constructor:note="x" href="/test.html"')],
+  ['prototype name is not a declared prefix',withAttribute('__proto__:note="x" href="/test.html"')],
   ['literal attribute less-than',withAttribute('href="/test<.html"')],
   ['illegal attribute whitespace',withAttribute('\u00a0href="/test.html"')],
   ['unknown attribute entity',withAttribute('href="/test&evil;.html"')],

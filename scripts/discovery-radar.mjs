@@ -181,6 +181,7 @@ const xmlDecode = s => {
 };
 const expanded = (name, namespace, attribute = false) => {
   const parts = name.split(':');
+  if (parts.length === 2 && !Object.hasOwn(namespace,parts[0])) fail('xml-namespace');
   const uri = parts.length === 2 ? namespace[parts[0]] : attribute ? '' : namespace[''] || '';
   if (uri === undefined) fail('xml-namespace');
   return {uri,local:parts.at(-1)};
