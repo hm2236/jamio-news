@@ -22,8 +22,8 @@ function fixture(t, {date='2026-10-08', status='active', empty=false, tracking='
   fs.writeFileSync(path.join(root,'data/prices.json'),'[]\n');
   const ctx=createContext({runId:123,attempt:1,createdAt:date+'T06:00:00+09:00',baseSha:'a'.repeat(40),windowStart:'2026-10-07T07:00:00+09:00'});
   const trackKey={campaign:'campaign-fixture',incident:'incident-A',product:'product-A'}[tracking];
-  const identity={canonicalTopic:{key:'campaign-fixture',scope:'scope-synthetic'},entities:[{type:tracking,key:trackKey,label:'Synthetic tracking object'}],region:'JP',productVersion:tracking==='product'?'v1':'',incidentId:tracking==='incident'?'incident-A':'',campaignId:tracking==='campaign'?'campaign-fixture':''};
-  const identityText=[identity.canonicalTopic.key,identity.canonicalTopic.scope,identity.region,trackKey,identity.productVersion,identity.incidentId,identity.campaignId].filter(Boolean).join(' ');
+  const identity={canonicalTopic:{key:'editorial-28-days-2026',scope:'編集用の追跡対象と続報範囲'},entities:[{type:tracking,key:trackKey,label:'Synthetic tracking object'}],region:'JP',productVersion:tracking==='product'?'v1':'',incidentId:tracking==='incident'?'incident-A':'',campaignId:tracking==='campaign'?'campaign-fixture':''};
+  const identityText=[identity.entities[0].label,identity.region,identity.productVersion,identity.incidentId,identity.campaignId].filter(Boolean).join(' ');
   const previousClaim=identityText+'. The prior published claim states the outage began and recovery is pending.';
   const article=(slug,index,published,url,body)=>({slug,title:`Synthetic story ${index}`,summary:'Synthetic isolated test',category:'ai',tags:['fixture'],kind:'news',status:'verified',published,verificationNote:'Synthetic primary material, isolated test only',sources:[{title:'Synthetic primary',type:'official',url,checked:published.replace('06:40','06:20')}],body});
   const edition=(slug,articles,published)=>({slug,date:slug.slice(0,10),variant:'morning',priceKeys:[],title:'Synthetic morning',kind:'daily',published,top5:articles.map(a=>a.slug),hero:articles[0].slug,articles:articles.map(a=>a.slug),deals:[],production:{contractVersion:1,x:{status:'unavailable',note:'No authenticated X, synthetic fixture only'}},body:'Synthetic edition only.\n'});
@@ -46,7 +46,7 @@ function fixture(t, {date='2026-10-08', status='active', empty=false, tracking='
   const evidence={version:1,context:ctx,reportDigest:hash(report),packageDigest:hash(readDraft(folder)),stories};
   const input=createSeriesInput(root,report,ctx,new Date(date+'T06:45:00+09:00'));
   const citation=(i,excerpt=snapshots[i].text)=>({url:snapshots[i].url,excerpt,checked:snapshots[i].checked,sourceDigest:snapshots[i].digest,sourceRegistryDigest:input.sourceRegistryDigest});
-  const fields=[['canonicalTopic.key',identity.canonicalTopic.key],['canonicalTopic.scope',identity.canonicalTopic.scope],[`entity:${tracking}:${trackKey}`,trackKey],['region','JP'],...['productVersion','incidentId','campaignId'].filter(key=>identity[key]).map(key=>[key,identity[key]])];
+  const fields=[[`entity:${tracking}:${trackKey}`,identity.entities[0].label],['region','JP'],...['productVersion','incidentId','campaignId'].filter(key=>identity[key]).map(key=>[key,identity[key]])];
   const proposals=articles.map((a,i)=>({id:`proposal-${i}`,article:a.slug,decision:i?'none':empty?'new-series':'existing-update',candidateSeriesId:i?'':'campaign-fixture',identity:structuredClone(identity),identityEvidence:fields.map(([field,value])=>({field,value,citation:citation(i)})),comparedCandidates:empty?[]:[{candidateSeriesId:series.id,disposition:i?'excluded':'match',reason:i?'Different change in a synthetic negative story':'Same tracked campaign with concrete recovery'}],comparedClaims:input.corpus.map(c=>({article:c.article,articleDigest:c.articleDigest,excerpt:previousClaim,disposition:i||empty||c.article!==prior[0].slug?'excluded':'same-target',reason:'Compare actual prior claim and scope separately'})),...(i||empty?{}:{previousIdentity:structuredClone(identity)}),novelty:{kind:i?'no-change':'material-update',delta:i?'':stories[i].claims[0].text,continuityReason:i?'':'Campaign tracking continues from outage into recovery',...(i||empty?{}:{previousArticle:prior[0].slug})},event:{key:`campaign-fixture:recovery-${i}`,url:stories[i].eventUrl,at:stories[i].eventAt,updateType:'recovery',milestone:{label:'Day 2',ordinal:2}},citations:[citation(i)],reason:'Synthetic decision for regression testing',confidence:0.99}));
   const submission={version:1,mode:'read-only',binding:proposalBinding(input,readDraft(folder),evidence),proposals};
   const evaluate=(digestValue=hash(submission),current=ctx,time=new Date(date+'T06:45:00+09:00'))=>evaluateSeriesProposals(root,{input,report,folder,evidence,submission,expectedProposalDigest:digestValue},current,time);
@@ -54,6 +54,40 @@ function fixture(t, {date='2026-10-08', status='active', empty=false, tracking='
   return {root,ctx,series,prior,previousClaim,identity,folder,report,evidence,input,submission,articles,snapshots,stories,ed,citation,evaluate,refresh,save};
 }
 const label=(f,evaluation)=>({version:1,evaluationDigest:hash(evaluation),reviewer:'Synthetic fixture reviewer',reviewedAt:f.ctx.date+'T07:00:00+09:00',items:evaluation.eligibleArticles.map((article,i)=>({article,expectedDecision:i?'none':f.submission.proposals[0].decision,expectedSeriesId:i?'':f.submission.proposals[0].candidateSeriesId,duplicate:false,ambiguous:false}))});
+
+for(const empty of [false,true])test(`${empty?'new-series':'existing-update'} accepts editorial topic absent from sources and published claims`,t=>{
+  const f=fixture(t,{empty}),p=f.submission.proposals[0];
+  for(const text of [...f.snapshots.map(s=>s.text),...f.input.corpus.map(c=>c.body)]){
+    assert.ok(!text.includes(p.identity.canonicalTopic.key));assert.ok(!text.includes(p.identity.canonicalTopic.scope));
+  }
+  assert.ok(f.snapshots[0].text.includes(p.identity.entities[0].label));assert.ok(f.snapshots[0].text.includes(p.identity.campaignId));assert.ok(f.snapshots[0].text.includes(p.identity.region));
+  assert.ok(p.identityEvidence.every(e=>!e.field.startsWith('canonicalTopic.')));
+  const e=f.evaluate();assert.equal(e.status,'proposal-valid');assert.equal(e.metrics.decisions[empty?'new-series':'existing-update'],1);
+  assert.equal(e.metrics.humanLabel,'unevaluated');assert.equal(e.registrationAuthorized,false);assert.equal(e.publicationAuthorized,false);
+});
+test('entity display label is literal while internal product key need not appear in evidence',t=>{
+  const f=fixture(t,{tracking:'product'}),p=f.submission.proposals[0],entity=p.identity.entities[0];
+  assert.ok(!f.snapshots[0].text.includes(entity.key));assert.ok(!f.previousClaim.includes(entity.key));
+  assert.equal(p.identityEvidence.find(e=>e.field===`entity:${entity.type}:${entity.key}`).value,entity.label);
+  assert.equal(f.evaluate().status,'proposal-valid');
+});
+for(const field of ['key','scope'])test(`existing-update rejects canonical topic ${field} mismatch with trusted registry`,t=>{
+  const f=fixture(t),p=f.submission.proposals[0];p.identity.canonicalTopic[field]=field==='key'?'other-editorial-topic':'別の編集範囲';p.previousIdentity=structuredClone(p.identity);
+  assert.throws(()=>f.evaluate(),/trusted topic\/scope\/entities differ/);
+});
+for(const empty of [false,true])for(const [field,tracking] of [['entity label','campaign'],['region','campaign'],['productVersion','product'],['incidentId','incident'],['campaignId','campaign']])test(`${empty?'new-series':'existing-update'} rejects missing source anchor: ${field}`,t=>{
+  const f=fixture(t,{tracking,empty}),p=f.submission.proposals[0],value=field==='entity label'?p.identity.entities[0].label:p.identity[field];
+  f.snapshots[0].text=f.snapshots[0].text.replaceAll(value,'unreported');f.snapshots[0].digest=digest(f.snapshots[0].text);
+  p.citations=[f.citation(0)];p.identityEvidence=p.identityEvidence.map(e=>({...e,citation:f.citation(0)}));f.refresh();
+  assert.throws(()=>f.evaluate(),/identity value absent from literal evidence/);
+});
+for(const [field,tracking] of [['region','campaign'],['productVersion','product'],['incidentId','incident'],['campaignId','campaign']])test(`existing-update rejects missing latest published claim anchor: ${field}`,t=>{
+  const f=fixture(t,{tracking}),p=f.submission.proposals[0],claim=p.comparedClaims.find(c=>c.disposition==='same-target'),value=p.identity[field];
+  f.prior[0].body=f.prior[0].body.replaceAll(value,'unreported');fs.writeFileSync(path.join(f.root,'content/articles',f.prior[0].slug+'.md'),serialize(f.prior[0]));
+  f.report.existingDigests=repositoryDigests(loadRepository(f.root));f.refresh();
+  claim.excerpt=claim.excerpt.replaceAll(value,'unreported');claim.articleDigest=f.input.corpus.find(c=>c.article===claim.article).articleDigest;
+  assert.throws(()=>f.evaluate(),/latest series published claim lacks identity\/delta comparison/);
+});
 
 test('detached proposal verifies morning evidence, preserves files and digest, never registers or publishes',t=>{
   const f=fixture(t),before=repositoryDigests(loadRepository(f.root)),registry=fs.readFileSync(path.join(f.root,'data/series/campaign-fixture.json'),'utf8');

@@ -1,6 +1,6 @@
 # ニュースシリーズ段階2 — detached proposal shadow
 
-追跡: [Issue #18](https://github.com/hm2236/jamio-news/issues/18)。基準mainをGitHubから再取得し、`cd211e5c106012a7d7588d742b3c9cafe6ff425e` と一致、AGENTS.mdなし、production registryは空と確認した。段階1の表示・receiptと全4既刊digestを維持する。段階2はread-onlyの提案・評価基盤で、**7連続日の実運用評価はまだ未達成**。guarded付与は未導入。
+追跡: [Issue #18](https://github.com/hm2236/jamio-news/issues/18)。初期実装の基準mainは`cd211e5c106012a7d7588d742b3c9cafe6ff425e`。canonical topicのblocker修正時（2026-10-07 JST）にGitHubから再取得したmainは`6f528ae3d06bb1b479ec4bae45a0ee212da9e25f`、AGENTS.mdなし、production registryは空と確認した。段階1の表示・receiptと全4既刊digestを維持する。段階2はread-onlyの提案・評価基盤で、**7連続日の実運用評価はまだ未達成**。guarded付与は未導入。
 
 ## 公開との境界
 
@@ -30,14 +30,15 @@ hash/canonicalはAutonomous v1の方式。input/proposal/evidenceを改変・自
 
 - candidateSeriesId: existingはbase registryに存在するactiveかつ既刊memberのあるseriesのみ。new-seriesは未登録slug案で、登録権限を与えない。paused/completed/空series/競合はneeds-review。negative decisionのIDは空または既存ID。
 - identity: canonical topic/key/scope、entities、region、productVersion、incidentId、campaignId。positiveはregionと企業以外の追跡anchor必須。製品はversion必須。incident/campaign IDはentity keyと一致。globalも明示的なregion値として原典に根拠が必要。不明値は空としpositiveへ進めない。
-- identityEvidence: positiveの全identity値をliteral source excerptへ結び付ける。excerptは20〜600文字、取得本文に完全一致し、URL/type/checkedは当該朝刊記事のsource、sourceDigest/sourceRegistryDigestはinputと一致。
+- canonicalTopic.key / scopeは編集側の正規化値であり、原典・既刊claim中のliteral完全一致を要求しない。existing-updateではtrusted registryのcanonicalTopicと完全一致させる。new-seriesでは未登録の正規化案として、追跡対象とscopeが引用に支えられるかを人手レビューする。proposal-validは意味的正しさや登録の承認ではない。
+- identityEvidence: positiveのentity表示名（label）と、空でないregion / productVersion / incidentId / campaignIdをliteral source excerptへ結び付ける。entityのfieldは`entity:<type>:<key>`、valueはlabel。keyは内部識別値でliteral不要だが、incident/campaignのkeyは対応IDと一致し、そのIDは別途literal必須。excerptは20〜600文字、取得本文に完全一致し、URL/type/checkedは当該朝刊記事のsource、sourceDigest/sourceRegistryDigestはinputと一致。canonicalTopicのfieldは含めない。
 - comparedCandidates: 最有力だけでなく全base registryのseriesをmatch/excluded/ambiguousと除外理由付きで比較する。重複/不存在/欠落は拒否。複数match/ambiguousはneeds-review。
 - comparedClaims: 全既刊newsのliteral本文excerpt・記事digest・same-target/excluded/ambiguousと理由を記録する。negativeも比較を省略しない。既刊claimの選択/除外は編集判断であり、人手ラベルで監査する。
 - novelty: 新event/material update、原典で引用できるdelta、continuityReason。positiveのdeltaは当該朝刊fact evidenceにも引用される必要がある。existingは最新memberのpreviousArticle/claimとpreviousIdentityを比較し、同一topic/entity/region/version/incident/campaignを要求する。既報delta再掲・既存eventKeyは拒否。
 - event: event key / URL /発生日時/updateType、milestone候補。URL/時刻は朝刊evidenceと一致。同じDayに別eventを許容し、Day 1/2/5の欠番はsequenceではない。milestone逆転/expectedCount超は拒否。proposal ID/article/event、同identity＋deltaの重複は拒否。
 - confidenceは0〜1の補助情報だけ。値が高くても構造・引用・同一性・新規性の検査を免除しない。
 
-引用の含意・翻訳・entity別名・eventKeyの意味・scopeの解釈・差分の重要性は機械検査だけで確定しない。異なる地域/版/incidentを同じ文字列へ誤って抽出するLLM誤りは、人手の誤結合評価が必要。既刊本文にidentityのliteral根拠がない場合はneeds-reviewへ落とし、推測で埋めない。
+引用の含意・翻訳・entity別名・eventKeyの意味・scopeの解釈・差分の重要性は機械検査だけで確定しない。異なる地域/版/incidentを同じ文字列へ誤って抽出するLLM誤りは、人手の誤結合評価が必要。既存続報は最新memberの既刊claimにも同じentity labelと実anchorのliteral根拠が必要。これらがない場合はneeds-reviewへ落とし、推測で埋めない。内部canonicalTopicやentity keyの文字列が原典・既刊にないだけでは拒否しない。
 
 mutable URL本文更新、同URLを使った新incident、夕刊、遅れて判明したイベントは現行morning evaluatorの対象外。別の新鮮な原典URLが取得できなければ停止する。本実装はその制約を緩めない。
 

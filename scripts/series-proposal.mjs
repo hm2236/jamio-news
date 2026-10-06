@@ -60,9 +60,11 @@ export function failureMetrics(submission) {
   }
   return {...emptyMetrics(), proposalCount:proposals.length, decisions:decisionCounts(proposals), duplicateProposal:duplicates, evidenceFailure:1};
 }
+// Only source-facing anchors are literal. Entity keys identify evidence fields;
+// labels ground the entity in source text. Canonical topic is editorial metadata:
+// fixed by the trusted registry for updates, reviewed by humans for new series.
 const identityFields = identity => [
-  ['canonicalTopic.key', identity.canonicalTopic.key], ['canonicalTopic.scope', identity.canonicalTopic.scope],
-  ...identity.entities.map(e => [`entity:${e.type}:${e.key}`, e.key]),
+  ...identity.entities.map(e => [`entity:${e.type}:${e.key}`, e.label]),
   ...['region','productVersion','incidentId','campaignId'].filter(key => identity[key]).map(key => [key, identity[key]])
 ];
 function checkIdentity(identity) {
