@@ -176,6 +176,16 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .card{border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:20px}
 .card h3,.top-five h3{font-family:"Yu Mincho",YuMincho,"Hiragino Mincho ProN",Georgia,serif}
 .card .readmore{margin-top:auto;padding-top:8px;text-decoration:underline;text-underline-offset:4px}
+.series-heading,.series-navigation,.series-list,.series-index{overflow-wrap:anywhere;min-width:0}
+.series-navigation{display:block;font-size:16px;font-weight:normal;margin:24px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.series-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.series-links a,.series-links span,.series-list a,.series-index a,.series-heading a{display:flex;align-items:center;min-height:44px;padding:8px 4px;box-sizing:border-box}
+.series-links a:focus-visible,.series-list a:focus-visible,.series-index a:focus-visible,.series-heading a:focus-visible{outline:3px solid var(--editorial);outline-offset:3px}
+.series-delta{white-space:normal;overflow:visible}
+.series-list ol{padding-left:24px}
+.series-list li{padding:16px 0;border-bottom:1px solid var(--line)}
+.series-list h2{font-size:1.25rem}
+@media(max-width:700px){.series-links{grid-template-columns:minmax(0,1fr)}.series-navigation{padding:12px}}
 .empty{border-radius:14px}
 .watch-tags a,.topic-cloud a{border-radius:8px;background:var(--paper)}
 .verification,.prose blockquote{border-radius:0 10px 10px 0}

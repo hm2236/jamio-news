@@ -1,6 +1,8 @@
 # 連続ニュースのシリーズ化 — 実装前提の設計 v1
 
-状態: **設計決定・未実装**（2026-10-06 JST）。追跡: [Issue #18](https://github.com/hm2236/jamio-news/issues/18)。自動刊行の親テーマ: [Issue #15](https://github.com/hm2236/jamio-news/issues/15)。本書のコード・JSON・URLは将来仕様の例であり、現行contractへそのまま投入できない。
+状態: **設計決定、段階1表示基盤を実装PRで追加**（2026-10-06 JST）。追跡: [Issue #18](https://github.com/hm2236/jamio-news/issues/18)。自動刊行の親テーマ: [Issue #15](https://github.com/hm2236/jamio-news/issues/15)。本書のコード・JSON・URLには将来仕様や仮想例を含むため、そのまま本番へ投入しない。
+
+段階1の実装範囲・レビュー条件・公開確認手順は [news-series-display.md](news-series-display.md) に記録する。本書の段階2/3は引き続き将来設計。production registryは空で、例示のOpenAI記事を登録しない。
 
 日をまたぐニュースを、一つの出来事の変化として読み返せるようにする。LLMは意味を判断して提案し、決定論的コードは構造・参照・順序・証拠の結び付けを検証する。記事ページの前/一覧/次は保存せず生成する。シリーズ所属だけで事実の確認状態やTop 5への優先度を上げない。
 
