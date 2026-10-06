@@ -22,7 +22,7 @@
 
 詳細は[同日複数版の契約](docs/morning-pipeline.md#同日複数版の識別と互換性)に従ってください。コード・契約の変更は基盤PR、各版の最終コンテンツは別の日刊PRに分離し、既存の全号のdigestと安全ガードを維持します。
 
-**連続ニュースのシリーズ化（段階1の表示基盤）**：[設計正本](docs/news-series-design.md)、[contract・人手登録・静的ナビ・追加公開証明](docs/news-series-display.md)、[追跡Issue #18](https://github.com/hm2236/jamio-news/issues/18)。記事front matterと既刊digestを保つsidecar方式。production registryはまだ空で、登録は別の人手レビューPRです。LLM提案shadowとguarded付与は未導入。現行front matterへseriesキーを追加する許可ではありません。
+**連続ニュースのシリーズ化**：[設計正本](docs/news-series-design.md)、[段階1の表示・人手登録・公開証明](docs/news-series-display.md)、[段階2のdetached proposal・証拠binding・7日評価基盤](docs/news-series-shadow.md)、[追跡Issue #18](https://github.com/hm2236/jamio-news/issues/18)。記事front matterと既刊digestを保つsidecar方式。production registryはまだ空で、登録は別の人手レビューPRです。段階2はread-onlyの提案検証基盤で、LLM自動接続と7連続日の実評価は未完了、guarded付与は未導入です。現行front matterへseriesキーを追加する許可ではありません。
 
 ## ローカルで確認
 

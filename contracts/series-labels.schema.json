@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JAMIO series shadow human labels v1",
+  "description": "Detached retrospective human review. Bound to exact evaluationDigest. Every eligible morning article, including omitted proposals, needs a label for a fully evaluated run. No publication or registration authority.",
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "evaluationDigest", "reviewer", "reviewedAt", "items"],
+  "properties": {
+    "version": {"const": 1},
+    "evaluationDigest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "reviewer": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "reviewedAt": {"type": "string", "format": "jst-date-time"},
+    "items": {"type": "array", "maxItems": 10, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["article", "expectedDecision", "expectedSeriesId", "duplicate", "ambiguous"],
+      "properties": {
+        "article": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "expectedDecision": {"enum": ["existing-update", "new-series", "related-only", "none", "needs-review"]},
+        "expectedSeriesId": {"type": "string"}, "duplicate": {"type": "boolean"}, "ambiguous": {"type": "boolean"}
+      }
+    }}
+  }
+}
