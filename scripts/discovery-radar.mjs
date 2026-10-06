@@ -152,8 +152,9 @@ export function sourceTime(value) {
 }
 export function hnRecord(item, expectedId) {
   if (item === null) return {status:'missing'};
-  if (!item || Array.isArray(item) || item.id !== expectedId || !Number.isSafeInteger(item.id) || !['story','job','comment','poll','pollopt'].includes(item.type)) fail('hn-shape');
+  if (!item || typeof item !== 'object' || Array.isArray(item) || item.id !== expectedId || !Number.isSafeInteger(item.id) || item.id < 1) fail('hn-shape');
   if (item.deleted === true || item.dead === true) return {status:item.deleted ? 'deleted' : 'dead'};
+  if (!['story','job','comment','poll','pollopt'].includes(item.type)) fail('hn-shape');
   if (!['story','job'].includes(item.type)) return {status:'unsupported-type'};
   if (!Number.isSafeInteger(item.time) || item.time < 0) fail('hn-time');
   const url = item.url === undefined ? null : text(item.url,2048);
@@ -162,42 +163,119 @@ export function hnRecord(item, expectedId) {
   return {status:'ok',record:{sourceItemId:String(item.id),canonicalUrl:`https://news.ycombinator.com/item?id=${item.id}`,sourceUrl:null,title:text(item.title),published:iso(item.time * 1000),updated:null,precision:'datetime',discoveredUrls:url ? [url] : [],semantic:{id:item.id,type:item.type,by:text(item.by || '',128),time:item.time,title:text(item.title),url,text:text(item.text || '',8192),dead:false,deleted:false}}};
 }
 
-// Small XML tokenizer with a checked stack, not a regex-only item extractor.
+const XML = 'http://www.w3.org/XML/1998/namespace';
+const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const RSS = 'http://purl.org/rss/1.0/';
+const ATOM = 'http://www.w3.org/2005/Atom';
+const DC = 'http://purl.org/dc/elements/1.1/';
+const xmlName = '[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_.-]*)?';
+const xmlSpace = /^[\x20\t\r\n]*$/;
+const xmlCharacters = s => {
+  for (const c of s) { const n = c.codePointAt(0); if (!(n === 9 || n === 10 || n === 13 || n >= 32 && n <= 0xd7ff || n >= 0xe000 && n <= 0xfffd || n >= 0x10000 && n <= 0x10ffff)) fail('xml-character'); }
+  return s;
+};
+// XML has only five predefined entities; HTML's nbsp remains confined to decode().
+const xmlDecode = s => {
+  if (/&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)/.test(s)) fail('xml-entity');
+  return xmlCharacters(decode(s));
+};
+const expanded = (name, namespace, attribute = false) => {
+  const parts = name.split(':');
+  const uri = parts.length === 2 ? namespace[parts[0]] : attribute ? '' : namespace[''] || '';
+  if (uri === undefined) fail('xml-namespace');
+  return {uri,local:parts.at(-1)};
+};
+// Small XML tokenizer with a checked stack and reviewed namespace bindings.
 export function parseXml(body) {
   if (Buffer.byteLength(body) > 262144 || /<!DOCTYPE|<!ENTITY/i.test(body)) fail('xml-declaration');
-  const document = {name:'#document',attrs:{},children:[],text:''}; const stack = [document];
-  let i = 0, nodes = 0;
-  const append = s => { if (s.includes('&') && /&(?![^;\s]+;)/.test(s)) fail('xml-entity'); stack.at(-1).text += decode(s); if (stack.at(-1).text.length > 16384) fail('xml-field-bound'); };
+  xmlCharacters(body);
+  const document = {name:'#document',attrs:{},children:[],text:'',namespace:{xml:XML}}; const stack = [document];
+  let i = body.startsWith('\ufeff') ? 1 : 0, nodes = 0;
+  const start = i;
+  const append = s => { stack.at(-1).text += s; if (stack.at(-1).text.length > 16384) fail('xml-field-bound'); };
   while (i < body.length) {
-    if (body[i] !== '<') { const end = body.indexOf('<',i); const j = end < 0 ? body.length : end; append(body.slice(i,j)); i = j; continue; }
-    if (body.startsWith('<!--',i)) { const j = body.indexOf('-->',i+4); if (j < 0 || body.slice(i+4,j).includes('--')) fail('xml-comment'); i = j+3; continue; }
-    if (body.startsWith('<![CDATA[',i)) { const j = body.indexOf(']]>',i+9); if (j < 0 || stack.length === 1) fail('xml-cdata'); stack.at(-1).text += body.slice(i+9,j); if (stack.at(-1).text.length > 16384) fail('xml-field-bound'); i = j+3; continue; }
-    if (body.startsWith('<?xml',i) && stack.length === 1 && !document.children.length) { const j = body.indexOf('?>',i); if (j < 0) fail('xml-prolog'); i = j+2; continue; }
-    const end = body.indexOf('>',i); if (end < 0 || end-i > 4096) fail('xml-tag');
+    if (body[i] !== '<') { const end = body.indexOf('<',i); const j = end < 0 ? body.length : end; const s = body.slice(i,j); if (s.includes(']]>') || stack.length === 1 && !xmlSpace.test(s)) fail('xml-text'); append(xmlDecode(s)); i = j; continue; }
+    if (body.startsWith('<!--',i)) { const j = body.indexOf('-->',i+4), s = body.slice(i+4,j); if (j < 0 || s.includes('--') || s.endsWith('-')) fail('xml-comment'); i = j+3; continue; }
+    if (body.startsWith('<![CDATA[',i)) { const j = body.indexOf(']]>',i+9); if (j < 0 || stack.length === 1) fail('xml-cdata'); append(body.slice(i+9,j)); i = j+3; continue; }
+    if (body.startsWith('<?',i)) {
+      const j = body.indexOf('?>',i), declaration = body.slice(i,j+2);
+      if (i !== start || j < 0 || !/^<\?xml[\x20\t\r\n]+version=(?:"1\.0"|'1\.0')(?:[\x20\t\r\n]+encoding=(?:"[Uu][Tt][Ff]-8"|'[Uu][Tt][Ff]-8'))?(?:[\x20\t\r\n]+standalone=(?:"(?:yes|no)"|'(?:yes|no)'))?[\x20\t\r\n]*\?>$/.test(declaration)) fail('xml-prolog');
+      i = j+2; continue;
+    }
+    let end = i+1, quote = null;
+    for (; end < body.length && end-i <= 4096; end++) { const c = body[end]; if (quote) { if (c === quote) quote = null; } else if (c === '"' || c === "'") quote = c; else if (c === '>') break; }
+    if (end >= body.length || end-i > 4096) fail('xml-tag');
     const token = body.slice(i+1,end); i = end+1;
-    if (token.startsWith('/')) { if (!/^\/[A-Za-z_][\w:.-]*\s*$/.test(token) || stack.length === 1 || token.slice(1).trim() !== stack.at(-1).name) fail('xml-unclosed'); stack.pop(); continue; }
-    const m = /^([A-Za-z_][\w:.-]*)([\s\S]*?)(\/?)$/.exec(token); if (!m) fail('xml-tag');
-    const name = m[1], attrs = {}; let rest = m[2];
-    while (rest.trim()) { const a = /^\s+([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"<]*)"|'([^'<]*)')/.exec(rest); if (!a || Object.hasOwn(attrs,a[1])) fail('xml-attribute'); attrs[a[1]] = decode(a[2] ?? a[3]); rest = rest.slice(a[0].length); }
-    const namespace = {...stack.at(-1).namespace,xml:'http://www.w3.org/XML/1998/namespace'};
-    for (const [key,value] of Object.entries(attrs)) if (key.startsWith('xmlns:')) namespace[key.slice(6)] = value;
-    for (const qualified of [name,...Object.keys(attrs)]) if (qualified.includes(':') && !qualified.startsWith('xmlns:') && !namespace[qualified.split(':')[0]]) fail('xml-namespace');
-    const local = name.split(':').at(-1);
+    if (token.startsWith('/')) { if (!new RegExp(`^/${xmlName}[\\x20\\t\\r\\n]*$`).test(token) || stack.length === 1 || token.slice(1).trim() !== stack.at(-1).name) fail('xml-unclosed'); stack.pop(); continue; }
+    const m = new RegExp(`^(${xmlName})([\\s\\S]*?)(/?)$`).exec(token); if (!m) fail('xml-tag');
+    const name = m[1], attrs = Object.create(null); let rest = m[2];
+    while (!xmlSpace.test(rest)) {
+      const a = new RegExp(`^[\\x20\\t\\r\\n]+(${xmlName})[\\x20\\t\\r\\n]*=[\\x20\\t\\r\\n]*(?:"([^"<]*)"|'([^'<]*)')`).exec(rest);
+      if (!a || Object.hasOwn(attrs,a[1])) fail('xml-attribute'); attrs[a[1]] = xmlDecode(a[2] ?? a[3]); rest = rest.slice(a[0].length);
+    }
+    const namespace = {...stack.at(-1).namespace};
+    for (const [key,value] of Object.entries(attrs)) if (key === 'xmlns' || key.startsWith('xmlns:')) {
+      const prefix = key === 'xmlns' ? '' : key.slice(6);
+      const allowed = prefix === '' ? ['',RSS,ATOM] : ({rdf:[RDF],dc:[DC],d:[DC],atom:[ATOM],xml:[XML]})[prefix];
+      if (!allowed?.includes(value) || Object.hasOwn(namespace,prefix) && namespace[prefix] !== value) fail('xml-namespace');
+      namespace[prefix] = value;
+    }
+    const attributeNames = new Set();
+    for (const key of Object.keys(attrs)) if (key !== 'xmlns' && !key.startsWith('xmlns:')) {
+      const a = expanded(key,namespace,true), identity = `${a.uri}\n${a.local}`;
+      if (attributeNames.has(identity)) fail('xml-attribute'); attributeNames.add(identity);
+    }
+    const {uri,local} = expanded(name,namespace);
     if (['item','entry'].includes(local) && stack.some(x => ['item','entry'].includes(x.name.split(':').at(-1)))) fail('xml-nested-item');
     if (++nodes > 4096 || stack.length > 16) fail('xml-structure-bound');
-    const node = {name,attrs,children:[],text:'',namespace}; stack.at(-1).children.push(node); if (!m[3]) stack.push(node);
+    const node = {name,uri,local,attrs,children:[],text:'',namespace}; stack.at(-1).children.push(node); if (!m[3]) stack.push(node);
   }
-  if (stack.length !== 1 || document.children.length !== 1 || document.text.trim()) fail('xml-unclosed');
+  if (stack.length !== 1 || document.children.length !== 1 || !xmlSpace.test(document.text)) fail('xml-unclosed');
   return document.children[0];
 }
-export function feedRecords(body, source, onReview) {
-  const tree = parseXml(body), local = n => n.name.split(':').at(-1);
-  if (!['rss','feed','RDF'].includes(local(tree))) fail('xml-dialect');
-  if (local(tree) === 'rss' && tree.attrs.version !== '2.0' || local(tree) === 'RDF' && tree.attrs['xmlns:rdf'] !== 'http://www.w3.org/1999/02/22-rdf-syntax-ns#' || local(tree) === 'feed' && tree.attrs.xmlns !== 'http://www.w3.org/2005/Atom') fail('xml-dialect');
-  const nodes = []; const visit = n => { if (['item','entry'].includes(local(n))) nodes.push(n); else n.children.forEach(visit); }; visit(tree);
+// Validate the entire tree before extracting records or invoking needs-review callbacks.
+function feedItems(tree) {
+  const is = (n,uri,local) => n.uri === uri && n.local === local;
+  const rss2 = is(tree,'','rss'), atom = is(tree,ATOM,'feed'), rdf = is(tree,RDF,'RDF');
+  if (!rss2 && !atom && !rdf || rss2 && tree.attrs.version !== '2.0') fail('xml-dialect');
+  const uri = rss2 ? '' : atom ? ATOM : RSS, itemName = atom ? 'entry' : 'item';
+  const nodes = [];
+  const leaf = n => { if (n.children.length) fail('xml-field-structure'); };
+  const container = n => { if (!xmlSpace.test(n.text)) fail('xml-dialect-structure'); };
+  const itemFields = atom ? ['id','title','link','published','updated','summary'] : rss2 ? ['guid','title','link','pubDate','description'] : ['title','link','description'];
+  const channelFields = atom ? ['id','title','link','updated'] : rss2 ? ['title','link','description','language','pubDate','lastBuildDate'] : ['title','link','description'];
+  const metadata = (n, inItem = false) => n.uri === uri && (inItem ? itemFields : channelFields).includes(n.local) || inItem && n.uri === DC && ['date','id','link','creator','subject','publisher','contributor'].includes(n.local);
+  const item = n => {
+    container(n); nodes.push(n);
+    for (const child of n.children) { if (!metadata(child,true)) fail('xml-dialect-structure'); leaf(child); }
+  };
+  const channel = n => {
+    container(n);
+    for (const child of n.children) {
+      if (rss2 && is(child,uri,itemName)) item(child);
+      else if (rdf && is(child,RSS,'items')) {
+        container(child); if (child.children.length !== 1 || !is(child.children[0],RDF,'Seq')) fail('xml-dialect-structure');
+        const seq = child.children[0]; container(seq);
+        for (const li of seq.children) { if (!is(li,RDF,'li') || !li.attrs['rdf:resource'] || !xmlSpace.test(li.text)) fail('xml-dialect-structure'); leaf(li); }
+      } else { if (!metadata(child)) fail('xml-dialect-structure'); leaf(child); }
+    }
+  };
+  container(tree);
+  if (rss2) {
+    if (tree.children.length !== 1 || !is(tree.children[0],'','channel')) fail('xml-dialect-structure'); channel(tree.children[0]);
+  } else if (atom) {
+    for (const child of tree.children) { if (is(child,ATOM,'entry')) item(child); else { if (!metadata(child)) fail('xml-dialect-structure'); leaf(child); } }
+  } else {
+    if (tree.children.filter(n => is(n,RSS,'channel')).length !== 1) fail('xml-dialect-structure');
+    for (const child of tree.children) { if (is(child,RSS,'channel')) channel(child); else if (is(child,RSS,'item')) item(child); else fail('xml-dialect-structure'); }
+  }
   if (nodes.length > 100) fail('xml-item-bound');
+  return {nodes,uri};
+}
+export function feedRecords(body, source, onReview) {
+  const {nodes,uri} = feedItems(parseXml(body));
   const records = nodes.map(n => {
-    const field = names => { const found = n.children.filter(x => names.includes(local(x))); if (found.length > 1) fail('xml-duplicate-field'); const x = found[0]; if (x?.children.length) fail('xml-field-structure'); return x; };
+    const field = names => { const found = n.children.filter(x => names.includes(x.local) && (x.uri === uri || x.uri === DC && ['date','id','link'].includes(x.local))); if (found.length > 1) fail('xml-duplicate-field'); return found[0]; };
     const value = names => text(field(names)?.text || '',4096);
     const l = field(['link']); const link = l?.attrs.href || l?.text.trim();
     if (!link || !value(['title'])) fail('xml-item-shape');

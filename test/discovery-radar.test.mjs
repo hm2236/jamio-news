@@ -59,6 +59,125 @@ test('empty valid feed is empty; generic query stripping and guessed HTTPS upgra
   assert.throws(()=>feedRecords(rssFixture.replace('/test.html','/test.html?x=1'),rss),/url-policy/);
   let count=0; assert.deepEqual(feedRecords(http,rss,()=>count++),[]); assert.equal(count,1);
 });
+const replaceTitle = value => rssFixture.replace('A &amp; B',value);
+const withAttribute = value => rssFixture.replace('<link>https://www.pref.kagoshima.jp/test.html</link>',`<link ${value}/>`);
+const withRoot = value => rssFixture.replace('<rss version="2.0">',value);
+const invalidXml = [
+  ['review bare attribute entity',withAttribute('href="https://www.pref.kagoshima.jp/test&ampbroken.html"')],
+  ['review text CDATA delimiter',replaceTitle('Example ]]> suffix')],
+  ['unquoted attribute',withAttribute('href=/test.html')],
+  ['broken attribute quote',withAttribute('href="/test.html')],
+  ['duplicate attribute',withAttribute('href="/test.html" href="/other.html"')],
+  ['missing attribute separator',withAttribute('href="/test.html"rel="alternate"')],
+  ['missing attribute equals',withAttribute('href "/test.html"')],
+  ['empty attribute name',withAttribute('="/test.html"')],
+  ['illegal attribute name',withAttribute('1href="/test.html"')],
+  ['multiple attribute colons',withAttribute('xml:a:b="x" href="/test.html"')],
+  ['literal attribute less-than',withAttribute('href="/test<.html"')],
+  ['illegal attribute whitespace',withAttribute('\u00a0href="/test.html"')],
+  ['unknown attribute entity',withAttribute('href="/test&evil;.html"')],
+  ['empty attribute entity',withAttribute('href="/test&;.html"')],
+  ['attribute null entity',withAttribute('href="/test&#0;.html"')],
+  ['attribute noncharacter entity',withAttribute('href="/test&#xFFFF;.html"')],
+  ['expanded duplicate attribute',withRoot('<rss version="2.0" xmlns:d="http://purl.org/dc/elements/1.1/" xmlns:dc="http://purl.org/dc/elements/1.1/" d:id="1" dc:id="2">')],
+  ['missing entity semicolon',replaceTitle('A &amp B')],
+  ['broken numeric entity',replaceTitle('A &#xGG;')],
+  ['uppercase numeric marker',replaceTitle('A &#X41;')],
+  ['HTML-only entity',replaceTitle('A &nbsp; B')],
+  ['surrogate numeric entity',replaceTitle('A &#xD800;')],
+  ['out-of-range numeric entity',replaceTitle('A &#1114112;')],
+  ['noncharacter numeric entity',replaceTitle('A &#65534;')],
+  ['literal control text',replaceTitle('A \u0001 B')],
+  ['literal unpaired surrogate',replaceTitle('A \ud800 B')],
+  ['literal control attribute',withAttribute('href="/test.html" bad="\u0001"')],
+  ['illegal CDATA character',replaceTitle('<![CDATA[A \u0000 B]]>')],
+  ['unclosed CDATA boundary',replaceTitle('<![CDATA[A ]]> B <![CDATA[C')],
+  ['CDATA closing outside section',replaceTitle('<![CDATA[A]]> B ]]>')],
+  ['CDATA outside root','<![CDATA[x]]>'+rssFixture],
+  ['malformed comment',rssFixture.replace('<item>','<!--bad--comment--><item>')],
+  ['comment ending dash',rssFixture.replace('<item>','<!--bad---><item>')],
+  ['malformed prolog','<?xml version=1.0?>'+rssFixture],
+  ['duplicate prolog','<?xml version="1.0"?><?xml version="1.0"?>'+rssFixture],
+  ['processing instruction',rssFixture.replace('<item>','<?xml-stylesheet href="x"?><item>')],
+  ['unknown namespace declaration',withRoot('<rss version="2.0" xmlns:evil="urn:unreviewed">')],
+  ['known prefix wrong URI',withRoot('<rss version="2.0" xmlns:dc="urn:unreviewed">')],
+  ['known URI unreviewed prefix',withRoot('<rss version="2.0" xmlns:evil="http://purl.org/dc/elements/1.1/">')],
+  ['wrong prefix URI pair',withRoot('<rss version="2.0" xmlns:d="http://www.w3.org/2005/Atom">')],
+  ['unknown default namespace',withRoot('<rss version="2.0" xmlns="urn:unreviewed">')],
+  ['unknown namespace injection',rssFixture.replace('<description>','<description xmlns:evil="urn:unreviewed">')],
+  ['namespace shadowing',atom.replace('<entry>','<entry xmlns:d="http://www.w3.org/2005/Atom">')],
+  ['default namespace shadowing',atom.replace('<entry>','<entry xmlns="http://purl.org/rss/1.0/">')],
+  ['default namespace undeclaration',atom.replace('<entry>','<entry xmlns="">')],
+  ['reserved xml rebinding',withRoot('<rss version="2.0" xmlns:xml="urn:unreviewed">')],
+  ['reserved xmlns binding',withRoot('<rss version="2.0" xmlns:xmlns="http://www.w3.org/2000/xmlns/">')],
+  ['review evil item','<rss version="2.0" xmlns:evil="urn:unreviewed"><channel><evil:item><evil:title>Foreign field</evil:title><evil:link>https://www.pref.kagoshima.jp/test.html</evil:link><evil:date>2026-10-06</evil:date></evil:item></channel></rss>'],
+  ['review RSS missing channel',rssFixture.replace('<channel>','').replace('</channel>','')],
+  ['RSS duplicate channel',rssFixture.replace('</rss>','<channel/></rss>')],
+  ['RSS entry in channel',rssFixture.replaceAll('item>','entry>')],
+  ['RSS wrapper around item',rssFixture.replace('<item>','<wrapper><item>').replace('</item>','</item></wrapper>')],
+  ['RSS channel nested in wrapper',rssFixture.replace('<channel>','<wrapper><channel>').replace('</channel>','</channel></wrapper>')],
+  ['RSS RDF namespace item',withRoot('<rss version="2.0" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">').replaceAll('item>','rdf:item>')],
+  ['RSS unknown field',rssFixture.replace('</item>','<unknown>ignored</unknown></item>')],
+  ['RSS channel-only field in item',rssFixture.replace('</item>','<lastBuildDate>Tue, 06 Oct 2026 12:00:00 GMT</lastBuildDate></item>')],
+  ['RSS Atom field in item',rssFixture.replace('</item>','<summary>unreviewed</summary></item>')],
+  ['RSS item-only field in channel',rssFixture.replace('<channel>','<channel><guid>channel-id</guid>')],
+  ['RSS container text',rssFixture.replace('<channel>','<channel>unreviewed text')],
+  ['Atom wrong root namespace',atom.replace('xmlns="http://www.w3.org/2005/Atom"','xmlns="http://purl.org/rss/1.0/"')],
+  ['Atom entry wrapper',atom.replace('<entry>','<wrapper><entry>').replace('</entry>','</entry></wrapper>')],
+  ['Atom channel entry',atom.replace('<entry>','<channel><entry>').replace('</entry>','</entry></channel>')],
+  ['Atom RSS item',atom.replaceAll('entry>','item>')],
+  ['Atom DC entry',atom.replaceAll('entry>','d:entry>')],
+  ['Atom RSS field in entry',atom.replace('</entry>','<description>unreviewed</description></entry>')],
+  ['Atom entry-only field at root',atom.replace('<entry>','<summary>unreviewed</summary><entry>')],
+  ['Atom wrong field namespace',atom.replaceAll('title>','d:title>')],
+  ['Atom field nested entry',atom.replace('<summary>','<summary><entry/>')],
+  ['RDF missing channel',rdf.replace(/<channel[\s\S]*?<\/channel>/,'')],
+  ['RDF duplicate channel',rdf.replace('</rdf:RDF>','<channel/></rdf:RDF>')],
+  ['RDF item inside channel',rdf.replace('</channel>','').replace('</rdf:RDF>','</channel></rdf:RDF>')],
+  ['RDF item wrapper',rdf.replace('<item ','<wrapper><item ').replace('</item>','</item></wrapper>')],
+  ['RDF Atom entry',rdf.replace('<item rdf:about="urn:fixture:1">','<entry>').replace('</item>','</entry>')],
+  ['RDF root wrong expanded name',rdf.replaceAll('rdf:RDF','RDF')],
+  ['RDF invalid sequence child',rdf.replace('rdf:li','rdf:item')],
+  ['RDF sequence in wrong location',rdf.replace('<items>','').replace('</items>','')],
+  ['RDF RSS2 field in item',rdf.replace('</item>','<guid>unreviewed</guid></item>')],
+  ['RDF unknown structure after valid item',rdf.replace('</rdf:RDF>','<rdf:Seq/></rdf:RDF>')],
+  ['RDF sequence missing resource',rdf.replace('rdf:resource="https://www.pref.kagoshima.jp/test.html"','')],
+  ['RDF sequence literal text',rdf.replace('<rdf:Seq>','<rdf:Seq>unreviewed')],
+  ['node bound','<rss version="2.0"><channel>'+ '<title/>'.repeat(4097)+'</channel></rss>'],
+  ['depth bound','<rss version="2.0"><channel>'+ '<description>'.repeat(17)+'</description>'.repeat(17)+'</channel></rss>'],
+  ['tag byte bound',withAttribute('href="/test.html" extra="'+'x'.repeat(4096)+'"')],
+  ['field output bound',replaceTitle('x'.repeat(1025))],
+  ['metadata field bound',rssFixture.replace('Short metadata','x'.repeat(4097))],
+  ['late invalid structure',rssFixture.replace('</channel>','<wrapper><item/></wrapper></channel>')]
+];
+for (const [name,body] of invalidXml) test(`XML fail closed through capture: ${name}`,async()=>{
+  assert.throws(()=>feedRecords(body,rss));
+  const state=emptyState(),cursor=new Date(now-7200000).toISOString(); state.sourceCursors[rss.id]=cursor;
+  const r=await capture(config,{state,seenState:'ok',imported:null,failures:[]},fixtureFetcher({[rss.endpoint]:body}));
+  const health=r.sourceHealth.find(x=>x.sourceId===rss.id);
+  assert.equal(health.status,'error'); assert.equal(health.itemCount,0);
+  assert.equal(r.observations.filter(x=>x.sourceId===rss.id).length,0);
+  assert.equal(r.state.sourceCursors[rss.id],cursor);
+  assert.ok(r.state.seen.every(x=>!x.identifierKey.includes(rss.id)));
+});
+test('XML valid escaped attributes, quoted greater-than and CDATA boundaries preserve metadata',()=>{
+  const body=withAttribute('href="/test&amp;name.html" note="A > B &lt; C &#x65E5;"').replace('A &amp; B','<![CDATA[A & B]]>&#32;&#x65E5;&lt;&gt;&quot;&apos;');
+  const row=feedRecords(body,rss)[0]; assert.equal(row.canonicalUrl,'https://www.pref.kagoshima.jp/test&name.html'); assert.equal(row.title,'A & B 日<>"\'');
+});
+test('reviewed namespaced Atom and existing Kagoshima RDF metadata remain valid',()=>{
+  const prefixed=atom.replace('<feed xmlns="http://www.w3.org/2005/Atom"','<atom:feed xmlns:atom="http://www.w3.org/2005/Atom"').replace('</feed>','</atom:feed>').replaceAll('<entry>','<atom:entry>').replaceAll('</entry>','</atom:entry>').replaceAll('<title>','<atom:title>').replaceAll('</title>','</atom:title>').replaceAll('<summary>','<atom:summary>').replaceAll('</summary>','</atom:summary>');
+  assert.deepEqual(feedRecords(prefixed,rss),feedRecords(atom,rss));
+  const metadata=rdf.replace('<item rdf:about="urn:fixture:1">','<item rdf:about="urn:fixture:1"><dc:creator>Department</dc:creator><dc:subject>Local</dc:subject><dc:publisher>Prefecture</dc:publisher><dc:contributor>Department</dc:contributor>');
+  assert.deepEqual(feedRecords('<?xml version="1.0" encoding="utf-8" ?>'+metadata,rss),feedRecords(rdf,rss));
+});
+test('minimal HN deleted/dead items classify after object and positive expected-id binding',()=>{
+  assert.equal(hnRecord({id:123,deleted:true},123).status,'deleted'); assert.equal(hnRecord({id:123,dead:true},123).status,'dead');
+  for (const bad of [{id:124,deleted:true},{id:0,deleted:true},{id:'123',deleted:true},{id:123,deleted:'true'},{id:123,deleted:false}]) assert.throws(()=>hnRecord(bad,123));
+});
+test('minimal HN deleted item reaches capture classification without an Observation',async()=>{
+  const r=await capture(config,recoverState({},compatibility,now),fixtureFetcher({[hn.endpoint]:'[123]','https://hacker-news.firebaseio.com/v0/item/123.json':'{"id":123,"deleted":true}'}));
+  assert.equal(r.sourceHealth[0].status,'empty'); assert.deepEqual(r.sourceHealth[0].classifications,{deleted:1}); assert.equal(r.sourceHealth[0].itemCount,0); assert.ok(!r.observations.some(x=>x.sourceId===hn.id));
+});
 test('HTML index uses reviewed item surface, ignoring navigation changes',()=>{
   const a=htmlRecords(htmlFixture,html)[0],b=htmlRecords(htmlFixture.replace('<body>','<body><nav>new navigation</nav>'),html)[0];
   assert.equal(digest(a.semantic),digest(b.semantic)); assert.equal(a.published,'2026-10-06'); assert.equal(a.precision,'date');

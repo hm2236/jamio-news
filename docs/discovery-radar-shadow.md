@@ -24,6 +24,12 @@ HN canonicalUrlは`https://news.ycombinator.com/item?id=<id>`。外部URLは`dis
 
 鹿児島はbounded RSS 2.0 / Atom / RDF RSS 1.0 extractor。stack付きtokenizer、namespace、CDATA、basic/numeric entity、relative link、date/id/linkを扱う。DOCTYPE/ENTITY、nested item/entry、unknown namespace、malformed/unclosed、duplicate field、nested field、4096 nodes/16 depth/100 feed items/field boundsを拒否する。本文はfetchしない。新dialectに合わせて自動拡張しない。
 
+XMLの属性・通常textは5 basic entitiesとnumeric entitiesのみ。unquoted/broken/duplicate属性（expanded nameの重複も含む）、裸の`&`、不正character、通常textの`]]>`、不正CDATA/comment/prologをfail closedにする。HTML用entity decoderの`nbsp`はXMLで許可しない。prefix/URIはdefaultのRSS 1.0/Atom、`rdf`のRDF、`d`/`dc`のDC、`atom`のAtom、`xml`の固定URIだけ。unknown binding・再binding/namespace shadowingを拒否し、抽出はURI + local nameを照合する。
+
+配置はRSS 2.0の`rss/channel/item`、Atomの`feed/entry`、RDFの`rdf:RDF`直下の1 channelとitemに限定する。RDF sequenceは`channel/items/rdf:Seq/rdf:li`のみ。metadata fieldもdialectと親ごとのallowlistを使い、未知wrapperや別dialectのfieldを無視せず拒否する。既存鹿児島RDFのDC creator/subject/publisher/contributorはleafとして検証し、Observation/digestには追加しない。tree全体の構造検証を抽出前に行う。回帰fixtureはcaptureでObservation 0/source error/cursor不更新まで確認する。
+
+HNの`{id:123,deleted:true}`等はobjectとpositive expected idのbinding後、live itemのtype検査前にdeleted/dead分類する。
+
 2026-10-06 direct preflightの実feedはRDF、10 items、200 text/xml。HTTP linkをgenericにHTTPSへ変換しない。configの**個別URL**に、HTTP/HTTPS両方の200実取得、可視本文の正規化digest一致、HTTPS canonical URLの証拠を持つ場合だけupgradeする。元URLは`sourceUrl`とsource固有IDに残す。HTTP/HTTPS bytesはHTML minificationで異なることがある。現在9 URLsを確認、`genbokusiitakefea.html`は可視本文が異なるため未登録。未確認HTTP itemは`https-equivalence-needs-review`で除外し、子URLをruntimeでfetchしない。新しいHTTP URLは人手のequivalence reviewが必要。
 
 Anthropicは`PublicationList…__listItem` anchor内の`__title` spanと表示timeだけをlocatorにする。正常item listがない、必要field欠落、未知URL/dateならparser-drift/error。nav、script、page全体の変更をObservationにしない。日付はdate precision、時刻を捏造しない。
