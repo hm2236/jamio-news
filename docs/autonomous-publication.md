@@ -1,5 +1,7 @@
 # JAMIO NEWS Autonomous Publication v1
 
+**Detached ingress SHADOW only:** [Issue #37 package protocol](autonomous-package-ingress.md) is the current producer handoff gate. The producer posts raw article/edition chunks and editorial.json, then a seal referencing a trusted morning-shadow run/attempt. Trusted main fetches its collector artifact independently and calculates all hashes. No producer hashes or report copies are required or trusted. Writer, merger, Scheduled Task publication and notifier remain disabled; this documentation does not configure the Scheduled Task or authorize the future writer steps below. The shared GitHub installation is unchanged.
+
 追跡Issue: [#15](https://github.com/hm2236/jamio-news/issues/15)。現段階は **read-only shadow**。既存ChatGPT予定タスクを編集制作者として維持し、新しいLLM API課金・キーは導入しない。GitHub ActionsでLLMが動くと仮定しない。自動マージ・日刊候補PR・本番刊行・チャット通知はこの実装から実行しない。
 
 シリーズ判定は[連続ニュースの設計](news-series-design.md)、[段階2のdetached proposal shadow](news-series-shadow.md)、[Issue #18](https://github.com/hm2236/jamio-news/issues/18)で追跡します。現行shadowの朝刊限定・fresh eventUrl条件を維持し、提案を公開データと分離して検証します。LLM自動接続と7連続日の実評価は未完了です。guarded付与は本稿の全本番ゲートに加え、activeシリーズへのappend限定・証拠binding・別navigation receiptを必要とします。現行daily guardの許可範囲はまだ変更しません。
@@ -61,7 +63,7 @@ flowchart LR
   V -.検証済み本番運用.-> N[永続通知outbox → success/failure]
 ```
 
-実線のGitHub自動実装はC/X/R/Aと既存号のVまで。Eは既存ChatGPT側の担当で、A→Eの自動接続は未実証。Qは実装済みのread-only CLI。H→PとV→Nは本番移行ゲート後の設計。予定タスクが存在すること・自律的にGitHub writeできることを推測で完了扱いしない。
+実線のGitHub自動実装はC/X/R/Aと既存号のVまで。Eは既存ChatGPT側の担当で、A→Eの自動接続は未実証。Qは実装済みのread-only CLIと[trusted Issue #37 ingress](autonomous-package-ingress.md)。producer→inbox→validated artifactの実Scheduled Task受入は未実証。H→PとV→Nは本番移行ゲート後の設計。予定タスクが存在すること・自律的にGitHub writeできることを推測で完了扱いしない。
 
 ## Shadow運用
 
@@ -105,7 +107,7 @@ enrich/evaluateはlive GitHub GETで正しいshadow workflow、最新attempt、m
 - 取得本文のdigest、publisher、同日checked、開始以後の取得、実際の過去のpublishedを検証。原稿の全publishing schema、出典/X/時系列、既存repository validate、全既存号digest不変・衝突検査は既存planDraftで再利用する。
 - shadow v1ではXはunavailable、価格観測は[]。認証済みX・送料/税/購入条件を取得する取引価格observerがないため。価格欄の候補調査は可能だが、販売店トップの取得を実売価格観測とは扱わない。既存手動日刊のX/価格契約は従来どおり維持する。
 
-**機械検証は意味的真偽を証明しない。** 原典引用と主張の含意、英日翻訳、発表日・beta/予定/提供済み、ベンチマーク条件、本人性、未列挙の本文主張、重要性、同イベントの別URL、引用量・利用条件は人間/編集評価が必要。digestは改ざん検出・結び付けであり署名でも認証でもない。shadow artifact/evidenceを自動刊行権限として使わない。将来はcollectorの信頼済みrun/artifact認証とtrusted main CI必須検証が必要。
+**機械検証は意味的真偽を証明しない。** 原典引用と主張の含意、英日翻訳、発表日・beta/予定/提供済み、ベンチマーク条件、本人性、未列挙の本文主張、重要性、同イベントの別URL、引用量・利用条件は人間/編集評価が必要。digestは改ざん検出・結び付けであり署名でも認証でもない。shadow artifact/evidenceを自動刊行権限として使わない。Issue #37 ingressはcollectorの信頼済みrun/artifactを独立認証してshadow評価する。日刊PRの必須証拠CIとwriter昇格は将来ゲート。
 
 ## 部分失敗・再開・復旧
 
@@ -125,10 +127,10 @@ rerunはsourceを再取得する別attemptとしてartifactを分ける。完成
 
 ## Guarded automatic publicationへの次のゲート
 
-1. 既存ChatGPT予定タスクを重複登録せず、ID/06:00 JST/最新実run/利用可能なWeb・repo限定GitHub write・PR・Actionsログの権限を実証する。今の接続と予定タスクを維持する。Web taskは接続ツールを利用し、local taskはPC/アプリ可用性に依存する。[OpenAI公式Scheduled tasks](https://learn.chatgpt.com/docs/automations)。今回の参照会話ではPR作成後に公開工程の引き継ぎが必要だったため、完全な無人write経路は未実証。
+1. 既存ChatGPT予定タスクを重複登録せず、ID/06:00 JST/最新実run/利用可能なWeb・Issue #37 comment作成・main/collector/Actionsログのreadを実証する。今の接続と予定タスクを維持する。Web taskは接続ツールを利用し、local taskはPC/アプリ可用性に依存する。[OpenAI公式Scheduled tasks](https://learn.chatgpt.com/docs/automations)。今回の参照会話ではPR作成後に公開工程の引き継ぎが必要だったため、完全な無人write経路は未実証。
 2. 複数日shadowの原典・トップ5・完全版を人間評価し、薄い日、一次資料不足、source/ChatGPT障害、翌日rerun、並行producer、main前進、CI/Pages障害、通知unknownを試験する。品質・成功率と停止理由を確認してから昇格する。
 3. main保護/rulesetとrequired guard/build/証拠CI、レビュー条件をサーバー側で強制する。既存CIやレビューを迂回する例外を作らない。管理権限は現在の接続では実証されていないので、repository管理者の設定が必要。
-4. durable date+variant制作lease/outboxを用意し、短寿命・repo限定GitHub App writerとmergerを分離。secretはGitHub Secrets/Environmentへ、公開repo/artifact/LLM本文へ渡さない。`GITHUB_TOKEN`で作成したPRは通常のCIが起動しないケースがあるため、現行guard/buildを確実に起動できる認証方法を実証する。Appが必要になってもLLM API課金は不要。
+4. durable date+variant制作lease/outboxを用意し、別の短寿命・repo限定GitHub App writerとmergerを分離。shared ChatGPT installationは他repo利用のため変更/縮小しない。secretはGitHub Secrets/Environmentへ、公開repo/artifact/LLM本文へ渡さない。`GITHUB_TOKEN`で作成したPRは通常のCIが起動しないケースがあるため、現行guard/buildを確実に起動できる認証方法を実証する。Appが必要になってもLLM API課金は不要。
 5. 認証済みChatGPT出力を不信データとして受け取る。collector/run/attempt/registry/contract digestを固定し、trusted main codeで新しい証拠ゲートを**必須**化する。現在の detached evaluatorはshadow用であり、日刊PRへ付けた自己申告sidecarだけでは認証にならない。LLMは編集選定と本文のみ、Git/merge/公開/secretの操作はcontrollerが判断する。
 6. 将来の狭いadd-only Contents API writerはdaily/<date>-morningへ記事を1ファイル1commit、号を最後のhead sealとして追加する。全commitの同一Candidate-Attempt trailerは整合性のみで認証ではない。価格変更/merge commit/既存ファイル変更/seal後commitは禁止。単一commit local候補は既存最終状態契約で互換。未sealed partial branchは勝手に再開せずcleanup/新controlled attempt。sealed immutable候補だけPR作成/復旧可能。ChatGPTはproducer/writerのみ。別deterministic mergerがlease・最新main・正確なhead/base・現在JST日付・guard receiptのvalidatedAt/expiresAtを再検証しexpected-head mergeする。このPRはwriter/mergerを有効化しない。
 7. merge応答とmerged PRからexact main SHAを固定し、Pages workflow success、public publication.jsonのcommit/date/slug/variant/url/digest、HTML canonical/digestを照合。直Webが読めなければ既存のそのmain runのJAMIO_PUBLIC_RECEIPT fallbackのみ。期限を越えても未確認をpublishedとしない。

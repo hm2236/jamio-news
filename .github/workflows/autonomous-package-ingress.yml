@@ -1,0 +1,64 @@
+name: Autonomous package ingress shadow
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  pull-requests: read # Existing daily branch/PR conflict check; never writes.
+jobs:
+  ingress:
+    # Cheap event gate mirrors config/autonomous-ingress.json (covered by tests).
+    # Trusted helper independently enforces all inbox identities after refetch.
+    if: >-
+      github.repository == 'hm2236/jamio-news' &&
+      github.event.issue.number == 37 &&
+      !github.event.issue.pull_request &&
+      github.event.comment.user.id == 42599072 &&
+      github.event.sender.id == 42599072 &&
+      github.event.comment.author_association == 'OWNER' &&
+      (github.event.comment.body == 'JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1' ||
+       startsWith(github.event.comment.body, format('JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1{0}', fromJSON('"\n"'))) ||
+       startsWith(github.event.comment.body, format('JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1{0}', fromJSON('"\r\n"'))))
+    # Only seal candidates enter this queue; skipped chunk/other-comment jobs do not.
+    concurrency:
+      group: autonomous-package-inbox
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # issue_comment uses default-branch workflow code. Never check out payload refs.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Authenticate inbox and select trusted collector artifact
+        id: collector
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/autonomous-ingress.mjs prepare "$RUNNER_TEMP/collector-reference.json"
+      - name: Download independently selected GitHub Actions artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.collector.outputs.artifact-id }}
+          run-id: ${{ steps.collector.outputs.collector-run-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/collector-report
+          merge-multiple: true
+      - name: Reconstruct and validate package with final fences
+        id: validate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/autonomous-ingress.mjs validate "$RUNNER_TEMP/collector-reference.json" "$RUNNER_TEMP/collector-report" "$RUNNER_TEMP/validated-package"
+      - name: Retain immutable validated shadow package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.validate.outputs.artifact-name }}
+          path: ${{ runner.temp }}/validated-package/
+          retention-days: 14
+          if-no-files-found: error
+          overwrite: false
