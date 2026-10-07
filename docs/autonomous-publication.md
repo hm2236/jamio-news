@@ -4,7 +4,7 @@
 
 シリーズ判定は[連続ニュースの設計](news-series-design.md)、[段階2のdetached proposal shadow](news-series-shadow.md)、[Issue #18](https://github.com/hm2236/jamio-news/issues/18)で追跡します。現行shadowの朝刊限定・fresh eventUrl条件を維持し、提案を公開データと分離して検証します。LLM自動接続と7連続日の実評価は未完了です。guarded付与は本稿の全本番ゲートに加え、activeシリーズへのappend限定・証拠binding・別navigation receiptを必要とします。現行daily guardの許可範囲はまだ変更しません。
 
-## 現状監査（2026-10-06 JST）
+## 初期shadow監査の履歴（2026-10-06 JST）
 
 GitHubからfresh cloneしたmainは `908a856aaed48fa0052bd0bcbe7e3fe1e367e5ac`。repoおよび作業ディレクトリの祖先にAGENTS.mdなし。README、editorial-policy、morning-pipeline、chatgpt-morning-prompt、publishing.schema、全既存workflowとproduction/daily-pr/remote-proof/confirm/verify-deploymentを正本として確認した。
 
@@ -14,6 +14,24 @@ GitHubからfresh cloneしたmainは `908a856aaed48fa0052bd0bcbe7e3fe1e367e5ac`�
 - GitHub branches/mainの `protected=false`、rulesetsは `[]`。CIは実装されているが、必須チェック・レビューをサーバー側で強制しているとは言えない。これはguarded automatic publicationのブロッカー。
 - repoには収集・LLM生成・通知台帳・ネイティブscheduled triggerがない。従来の外部ChatGPT手順は正確なhead/base、expected-head merge、exact main SHA Pages＋receipt/HTML照合を要求するが、接続権限や予定タスク実runの可用性は今回のrepo監査だけでは証明できない。
 - この基盤変更では本番記事/価格/既存publishing.schema/guard/Pages workflowを変更しない。追加証拠契約はshadow用の別契約であり、まだ日刊PRの必須ゲートではない。
+
+## PR-1 authoritative check hardening（2026-10-07）
+
+取得mainは5ef7e629707e89b0b2afcb9dd0cefa821f5e33c8。上のshadow初期監査は履歴であり、現状の予定収集不在を意味しない。Issue #15と最新コメントを確認。main protectionは404 Branch not protected、rulesetsと適用branch rulesは空。設定は変更しない。
+
+全PRでtrusted guardを実行し、infrastructure/code/docsだけならpass、non-dailyのcontent/またはdata/prices.json変更はfail。daily候補は最新expected base・全commit履歴・add-only・最後のedition seal・記事集合・全既刊digestを検証する。multi-commit Contents v1は価格を書かない。単一commit local/Workだけ既存append-only価格契約を維持する。未来published/前日のslug/翌日rerunは拒否し、receiptは次のJST midnightに失効する。GitHub checkの成功自体は自動失効しないので、将来mergerには時刻・head/baseの最終fenceが必須。
+
+2026-10-07 Scheduled Taskで低水準Git Data API ref更新ルートは失敗した。今後の方向は高水準Contents API create-fileによるadd-only候補だが、このPRはwriterを実装/有効化せず予定タスク設定も変更しない。unsigned attempt trailerは混在を決定的に検出する補助で、同markerの偽装や意味的な混在を認証できない。producer認証・durable leaseは依然別ゲート。
+
+訂正metadataは存在するがcorrectionの認可契約は未実装。レビュー済みという宣言ではprotected-content変更を通さない。歴史的保守/訂正を可能にする契約は独立レビューで追加する。
+
+Pagesはmainのrunning workflowを後続pushでcancelしない。ただし現在のqueue指定なしconcurrencyはpending runの全保存/FIFOを保証しない。[GitHub concurrency仕様](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)にはqueue: maxもあるが、このPRは推奨されたcancel抑止の最小変更に留める。現在のexact merge SHA確認と、後続SHAの祖先包含＋同一receiptで確認する目標には未解決の衝突があり、containmentを暗黙には実装しない。公開receipt検証成功前のpublished通知は禁止。
+
+### 次の人手GitHub設定（このPRでは変更しない）
+
+Settings → Rules → Rulesetsでactive branch rulesetを用意する。mainにRestrict deletions、Block force pushes（non-fast-forward禁止）、Require a pull request before merging、Require status checks to passとRequire branches to be up to date before mergingを設定する。必須check contextはdaily-guard（Daily publication guard）とbuild（Publish JAMIO NEWS）。[GitHub rulesets公式仕様](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)に従う。GitHubの実check名を確認し、expected source/integrationは可能ならGitHub Actions Appを選ぶ。現在mainのbuild checkでapp slug=github-actions、app ID=15368を確認済み。daily-guardも対象PRのcheckから同Appを確認して選ぶ。bypass listは空、管理者/owner/Appを含む例外を作らない。approval countは0でよい（単独ownerはself-approval不可）。daily/**にもforce push禁止を設定する。
+
+現在public repositoryのruleset/read APIは利用でき、admin permissionも確認できるが、write能力は本タスクで試さない。required-check integration_idやstrict設定は管理者が実checkから確認する。check成功のdate自動失効、Contents writer/mergerの認証・lease、pending deployの全件キューはrulesetでは提供されない。サーバー保護の欠如は自動刊行に対するP0 blockerとして残る。
 
 ## 最小安全アーキテクチャ
 
@@ -28,7 +46,7 @@ flowchart LR
   A --> E[既存ChatGPTによる原典閲覧・候補選定・原稿生成]
   E --> Q[shadow証拠契約 + publishing契約 + 既存digest不変]
   Q --> H[shadow-ready / 人間品質評価]
-  H -.本番ゲート通過後の別実装.-> P[daily候補 → exact head/base CI → 通常merge]
+  H -.本番ゲート通過後の別実装.-> P[daily候補 → exact head/base CI → 別deterministic merger]
   P -.-> V
   V -.検証済み本番運用.-> N[永続通知outbox → success/failure]
 ```
@@ -87,8 +105,8 @@ enrich/evaluateはlive GitHub GETで正しいshadow workflow、最新attempt、m
 | source/X取得不可 | failuresを残す。読めた一次資料へ。不足はblocked、創作しない | source digest/取得記録、bounded retry予算 |
 | 編集/LLM/接続不可 | awaiting-editorialのまま公開しない。古い原稿を持ち越さない | immutable packageとproducer run、timeout/failure分類 |
 | candidate衝突/古いattempt | blocked/stale。勝手にbranch更新・forceしない | date+variantのlease、compare-and-swap epoch |
-| authoritative CI失敗 | head固定で修正/再検証。安全ガードを弱めない | validated head/base/receipt/各workflow run ID |
-| merge前main前進 | 最新main取込、重複と全既存digest再検証 | 新しいvalidation receipt、expected-head merge |
+| authoritative CI失敗 | sealed headは変更せずblocked。所有者がcleanup/新attemptを管理 | validated head/base/receipt/各workflow run ID |
+| merge前main前進 | staleで停止。最新mainから別の管理された候補を再検証 | 新しいvalidation receipt、expected-head merge |
 | merge後Pages/receipt不一致 | published通知停止。記事再生成せずexact main公開確認だけ再開 | merge SHA、date/slug/variant/url/digest、verify attempt |
 | 通知失敗/送信不明 | 自動再送しない、送信先と台帳を人間照合 | outbox pending/sending/sent/unknown、宛先+slug+digest |
 | 悪い公開/訂正 | 自動force/reset/deleteなし。レビュー済み復旧/訂正PR、updated/corrections、旧号を保持 | incident、復旧main SHA、新receipt、訂正通知の承認 |
@@ -102,7 +120,7 @@ rerunはsourceを再取得する別attemptとしてartifactを分ける。完成
 3. main保護/rulesetとrequired guard/build/証拠CI、レビュー条件をサーバー側で強制する。既存CIやレビューを迂回する例外を作らない。管理権限は現在の接続では実証されていないので、repository管理者の設定が必要。
 4. durable date+variant制作lease/outboxを用意し、短寿命・repo限定GitHub App writerとmergerを分離。secretはGitHub Secrets/Environmentへ、公開repo/artifact/LLM本文へ渡さない。`GITHUB_TOKEN`で作成したPRは通常のCIが起動しないケースがあるため、現行guard/buildを確実に起動できる認証方法を実証する。Appが必要になってもLLM API課金は不要。
 5. 認証済みChatGPT出力を不信データとして受け取る。collector/run/attempt/registry/contract digestを固定し、trusted main codeで新しい証拠ゲートを**必須**化する。現在の detached evaluatorはshadow用であり、日刊PRへ付けた自己申告sidecarだけでは認証にならない。LLMは編集選定と本文のみ、Git/merge/公開/secretの操作はcontrollerが判断する。
-6. `daily/<date>-morning`だけに既存guard許可パスを1 immutable commitで追加。同一slugの別branch/PR禁止。最新leaseとmain、両workflowの正確なhead/base＋guard receiptを再取得してexpected head付き通常merge。レビュー必須なら人間で停止する。mainが競合更新したら再検証する。
+6. 将来の狭いadd-only Contents API writerはdaily/<date>-morningへ記事を1ファイル1commit、号を最後のhead sealとして追加する。全commitの同一Candidate-Attempt trailerは整合性のみで認証ではない。価格変更/merge commit/既存ファイル変更/seal後commitは禁止。単一commit local候補は既存最終状態契約で互換。未sealed partial branchは勝手に再開せずcleanup/新controlled attempt。sealed immutable候補だけPR作成/復旧可能。ChatGPTはproducer/writerのみ。別deterministic mergerがlease・最新main・正確なhead/base・現在JST日付・guard receiptのvalidatedAt/expiresAtを再検証しexpected-head mergeする。このPRはwriter/mergerを有効化しない。
 7. merge応答とmerged PRからexact main SHAを固定し、Pages workflow success、public publication.jsonのcommit/date/slug/variant/url/digest、HTML canonical/digestを照合。直Webが読めなければ既存のそのmain runのJAMIO_PUBLIC_RECEIPT fallbackのみ。期限を越えても未確認をpublishedとしない。
 8. success/failure通知先とdurable outboxを接続し、receipt一致後のトップ5＋完全版URLを一度だけ通知。送信不明はunknownとして人間照合。設定変更・本番開始は独立したレビュー可能な変更で行う。
 

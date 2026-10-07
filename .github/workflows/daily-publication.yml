@@ -9,7 +9,6 @@ concurrency:
   cancel-in-progress: true
 jobs:
   daily-guard:
-    if: startsWith(github.event.pull_request.head.ref, 'daily/')
     runs-on: ubuntu-latest
     steps:
       # Only trusted main code runs. Candidate files are read as Git blobs, never checked out.
@@ -24,6 +23,8 @@ jobs:
       - name: Fetch exact candidate objects
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git fetch origin "$PR_HEAD_SHA"
+        run: |
+          git fetch origin main
+          git fetch origin "$PR_HEAD_SHA"
       - name: Guard daily paths and publication invariants
         run: node scripts/daily-pr.mjs

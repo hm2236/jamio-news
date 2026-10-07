@@ -57,17 +57,17 @@ test('trusted Git guard compares full base/head trees, not only the last commit 
  const f=fixture();git(['init']);write('site.config.json',JSON.stringify(config));for(const a of f.base.articles)write(`content/articles/${a.slug}.md`,serialize(a));for(const e of f.base.editions)write(`content/editions/${e.slug}.md`,serialize(e));write('data/prices.json',JSON.stringify(f.base.prices));const base=commit();
  for(const a of f.articles)write(`content/articles/${a.slug}.md`,serialize(a));write(`content/editions/${date}.md`,serialize(f.edition));write('data/prices.json',JSON.stringify(f.candidate.prices));const head=commit();
  const repo={full_name:'hm2236/jamio-news'},event={repository:repo,pull_request:{number:7,base:{ref:'main',sha:base,repo},head:{ref:branch,sha:head,repo}}};
- const receipt=guardGitPR(root,event);assert.equal(receipt.headSha,head);assert.equal(receipt.baseSha,base);assert.equal(receipt.digest,validateDailyChange(branch,f.changes,f.base,f.candidate).digest);
- write('scripts/escape.mjs','throw new Error("must not execute candidate code");');event.pull_request.head.sha=commit();assert.throws(()=>guardGitPR(root,event),/forbidden/);
- event.pull_request.head.repo={full_name:'other/fork'};assert.throws(()=>guardGitPR(root,event),/same-repository/);
- event.pull_request.head.repo=repo;event.pull_request.base.sha=event.pull_request.head.sha;event.pull_request.head.sha=head;assert.throws(()=>guardGitPR(root,event));
+ const receipt=guardGitPR(root,event,{now:new Date('2026-10-05T23:59:00+09:00'),latestMainSha:event.pull_request.base.sha});assert.equal(receipt.headSha,head);assert.equal(receipt.baseSha,base);assert.equal(receipt.digest,validateDailyChange(branch,f.changes,f.base,f.candidate).digest);
+ write('scripts/escape.mjs','throw new Error("must not execute candidate code");');event.pull_request.head.sha=commit();assert.throws(()=>guardGitPR(root,event,{now:new Date('2026-10-05T23:59:00+09:00'),latestMainSha:event.pull_request.base.sha}),/forbidden/);
+ event.pull_request.head.repo={full_name:'other/fork'};assert.throws(()=>guardGitPR(root,event,{now:new Date('2026-10-05T23:59:00+09:00'),latestMainSha:event.pull_request.base.sha}),/same-repository/);
+ event.pull_request.head.repo=repo;event.pull_request.base.sha=event.pull_request.head.sha;event.pull_request.head.sha=head;assert.throws(()=>guardGitPR(root,event,{now:new Date('2026-10-05T23:59:00+09:00'),latestMainSha:event.pull_request.base.sha}));
 });
 function proofFixture() {
  const repo={full_name:'hm2236/jamio-news'},digest='d'.repeat(64),url=`https://hm2236.github.io/jamio-news/editions/${date}/`;
  const pr={number:7,state:'open',base:{sha:baseSha,ref:'main',repo},head:{sha:headSha,ref:branch,repo}};
  const run=(workflow,event,sha)=>({path:`.github/workflows/${workflow}`,event,head_sha:sha,status:'completed',conclusion:'success',head_branch:event==='pull_request'?branch:'main',html_url:'https://github.com/hm2236/jamio-news/actions/runs/1'});
  const guardRun={...run('daily-publication.yml','pull_request_target',headSha),pull_requests:[{number:7,head:{sha:headSha},base:{sha:baseSha}}]};
- const validation={pr,expectedHead:headSha,expectedBase:baseSha,latestMainSha:baseSha,guardRun,guardReceipt:{status:'guard-passed',contractVersion:1,pr:7,date,baseSha,headSha,digest,editionUrl:url},buildRun:run('pages.yml','pull_request',headSha)};
+ const validation={pr,now:new Date('2026-10-05T23:59:00+09:00'),expectedHead:headSha,expectedBase:baseSha,latestMainSha:baseSha,guardRun,guardReceipt:{sealSha:headSha,candidateMode:'single-commit',validatedAt:'2026-10-05T14:59:00Z',expiresAt:'2026-10-05T15:00:00Z',status:'guard-passed',contractVersion:1,pr:7,date,baseSha,headSha,digest,editionUrl:url},buildRun:run('pages.yml','pull_request',headSha)};
  const published={validated:validateRemotePR(validation),mergeResult:{merged:true,sha:mainSha},mergedPR:{...pr,merged:true,merge_commit_sha:mainSha},mainRun:run('pages.yml','push',mainSha),manifest:{contractVersion:1,commit:mainSha,editions:[{date,url,digest}]},html:`<link rel="canonical" href="${url}"><meta name="jamio-edition-digest" content="${digest}">`};
  return {validation,published};
 }
@@ -76,7 +76,7 @@ test('API-only confirmation accepts exact validated head, merged main SHA and ma
  f.validation.guardRun.head_sha=baseSha;assert.equal(validateRemotePR(f.validation).status,'validated');
 });
 test('remote confirmation rejects skipped/stale CI, changed heads/bases and stale or missing publication receipts',()=>{
- for(const mutate of [f=>f.pr.head.sha=mainSha,f=>f.latestMainSha=mainSha,f=>f.guardReceipt.headSha=mainSha,f=>f.guardReceipt.baseSha=mainSha,f=>f.guardReceipt.pr=8,f=>f.guardRun.conclusion='skipped',f=>f.guardRun.head_sha=mainSha,f=>f.guardRun.pull_requests=[],f=>f.guardRun.pull_requests[0].head.sha=mainSha,f=>f.guardRun.pull_requests[0].base.sha=mainSha,f=>f.buildRun.conclusion='failure',f=>f.buildRun.head_sha=baseSha]){const f=proofFixture();mutate(f.validation);assert.throws(()=>validateRemotePR(f.validation));}
+ for(const mutate of [f=>f.pr.head.sha=mainSha,f=>f.latestMainSha=mainSha,f=>f.guardReceipt.headSha=mainSha,f=>f.guardReceipt.sealSha=mainSha,f=>f.guardReceipt.candidateMode='partial',f=>f.guardReceipt.validatedAt='2026-10-05T15:00:01Z',f=>delete f.guardReceipt.expiresAt,f=>f.now=new Date('2026-10-05T15:00:00Z'),f=>f.guardReceipt.baseSha=mainSha,f=>f.guardReceipt.pr=8,f=>f.guardRun.conclusion='skipped',f=>f.guardRun.head_sha=mainSha,f=>f.guardRun.pull_requests=[],f=>f.guardRun.pull_requests[0].head.sha=mainSha,f=>f.guardRun.pull_requests[0].base.sha=mainSha,f=>f.buildRun.conclusion='failure',f=>f.buildRun.head_sha=baseSha]){const f=proofFixture();mutate(f.validation);assert.throws(()=>validateRemotePR(f.validation));}
  for(const mutate of [f=>f.mergeResult.merged=false,f=>f.mergedPR.head.sha=baseSha,f=>f.mergedPR.merge_commit_sha=headSha,f=>f.mainRun.conclusion='failure',f=>f.mainRun.head_sha=headSha,f=>f.manifest.commit=headSha,f=>f.manifest.editions[0].date='2026-10-04',f=>f.manifest.editions[0].url='https://hm2236.github.io/jamio-news/',f=>f.manifest.editions[0].digest='0'.repeat(64),f=>f.html='<html>HTTP 200, stale edition</html>']){const f=proofFixture();mutate(f.published);assert.throws(()=>confirmRemotePublication(f.published));}
 });
 test('Actions verifies actual public receipt and HTML before emitting an API-readable proof',async()=>{
@@ -100,4 +100,11 @@ test('remote can use trusted post-deploy logs when scheduled Web cannot retrieve
  f.published.deploymentProof.commit=headSha;assert.throws(()=>confirmRemotePublication(f.published),/stale/);f.published.deploymentProof.commit=mainSha;
  f.published.mainRun.conclusion='failure';assert.throws(()=>confirmRemotePublication(f.published),/not succeeded/);f.published.mainRun.conclusion='success';
  f.published.deploymentProof.verifiedEdition.date='2026-10-04';assert.throws(()=>confirmRemotePublication(f.published),/stale/);
+});
+
+test('exact-SHA confirmation rejects a later descendant until containment architecture is resolved',()=>{
+ const f=proofFixture(),later='e'.repeat(40);
+ f.published.mainRun.head_sha=later;f.published.manifest.commit=later;
+ f.published.ancestry={base:mainSha,head:later,status:'ahead',merge_base_commit:{sha:mainSha}};
+ assert.throws(()=>confirmRemotePublication(f.published),/merged main SHA/);
 });
