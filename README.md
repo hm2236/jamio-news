@@ -59,7 +59,9 @@ node scripts/build.mjs
 
 **機械可読契約**：[contracts/publishing.schema.json](contracts/publishing.schema.json)。必須項目、独自format、参照・出典の追加検証、[06:00制作開始・07:00公開目標の引き継ぎ](docs/morning-pipeline.md)、[実行プロンプト](docs/chatgpt-morning-prompt.md)をセットで使用してください。日刊号はビルド・CIでも同じ契約を検証します。
 
-**remote/scheduled**：予定タスクにWeb＋GitHub APIがあり、clone/Nodeが使えない場合は自動的にこのモードを選択します。`daily/<edition-slug>` だけに最終記事・号と実価格観測をAPIで書き、信頼済みmainの **Daily publication guard** と、正確なPR headの **Publish JAMIO NEWS** が成功してから期待head SHA付きでマージ。mainのPages成功と公開receiptのSHA/date/URL/digestをAPI/Webで照合すれば、ローカル実行は不要です。日刊PRはコード・契約・CI・既存記事を変更できず、価格履歴は追記だけです。[詳細なAPI手順](docs/morning-pipeline.md#remotescheduledのapi手順)。
+**remote/scheduled（shadow / hardening段階）**：現在はread-only shadowと権威あるCIの安全強化段階で、自律writerはまだ有効化していません。将来のwriterは高水準GitHub Contents APIのcreate-only / add-onlyを使い、同repoの `daily/<edition-slug>` だけに新規記事を先に追加し、号ファイルを最後に追加します。その最終headがimmutable sealで、以後の追記・変更は禁止です。autonomous Contents v1は `data/prices.json` を変更せず、`priceKeys=[]` とします。既存ファイルのupdate/delete、force-push、raw ref PATCHは使いません。単一コミットlocal/Workの既存価格追記契約とは区別します。
+
+ChatGPT Scheduled Taskはproducer/writerのみで、sealed候補のPR提出後は停止し、自分ではマージしません。その先はtrusted CI → 将来の別deterministic merger → Pages → authoritative receipt verifier → notifierが担当します。このPRでwriter・merger・通知を有効化しません。`published` は権威あるPages receipt検証（対象slug/variant/URL/digestと号HTMLの一致）が成功した後だけ許可します。exact merge SHA確認と後続descendant SHAによるcontainmentの扱いは未解決で、別SHAの成功やdigest一致だけを自己判断で代用しません。現在のfail-closed規則と候補復旧条件は[API手順](docs/morning-pipeline.md#remotescheduledのapi手順)と[自動刊行の本番ゲート](docs/autonomous-publication.md)に従います。
 
 記事メタデータ例：
 

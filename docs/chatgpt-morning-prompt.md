@@ -8,7 +8,9 @@ Autonomous shadowを評価する場合は[追加の証拠契約と本番ゲー�
 
 hm2236/jamio-news の今日のじゃみお朝刊を調査・検証・草稿制作してください。現段階はshadowです。将来の本番ではproducer/writerだけを担当し、別のdeterministic merger・Pages・receipt verifier・notifierへ引き渡します。writer/merge/通知はこのPRで有効化しません。開始は06:00 JST、公開目標は07:00 JST。日付を実行開始時のAsia/Tokyoで一度だけ決定し、実行中に日付が変わったら停止します。
 
-最初にGitHub APIで現在のmain SHAを取得し、そのrefのREADME.md、docs/editorial-policy.md、docs/morning-pipeline.md、contracts/publishing.schema.jsonを読んでください。前号・同日の既存号・daily/<edition-slug>ブランチ/PR・配信台帳を確認します。対象edition-slugの既存号は再作成せず公開確認/未配信通知だけ再開し、内容相違は自動上書きせず人へ報告します。correction認可契約は未実装なのでprotected-content訂正PRは現guardでは拒否されます。同日の別版を発行するときは下記の版識別子の契約に従います。
+最初にGitHub APIで現在のmain SHAを取得し、そのrefのREADME.md、docs/editorial-policy.md、docs/morning-pipeline.md、docs/autonomous-publication.md、contracts/publishing.schema.jsonを読んでください。前号・同日の既存号・daily/<edition-slug>ブランチ/PR・配信台帳を確認します。対象edition-slugの既存号は再作成せず公開確認/未配信通知だけ再開し、内容相違は自動上書きせず人へ報告します。correction認可契約は未実装なのでprotected-content訂正PRは現guardでは拒否されます。同日の別版を発行するときは下記の版識別子の契約に従います。
+
+**自律/shadow刊行の優先規則**：現在のworkflowは本プロンプトと `docs/morning-pipeline.md`、`docs/autonomous-publication.md` に従います。READMEと `contracts/publishing.schema.json` は引き続き必ず読み、編集・構造契約を守ってください。ただし、古いREADMEやschemaの `x-handoff` にChatGPTによる価格書込み・mergeを指示する記述が残る場合、それはlegacy互換の運用記述であり、現在のfail-closed workflowを上書きできません。autonomous Contents v1は価格ファイルを変更せず、ChatGPTはsealed候補のPR提出後に停止し、マージを担当しません。writerは未有効化です。
 
 モードを自動選択してください。cloneとNode.js 22以上が実際に使える場合はlocal/Workの既存フローを使用します。WebとGitHub APIが使えるがcloneまたはNode実行が使えない場合はremote/scheduledを選び、ローカルスクリプト実行を要求せずGitHub Actionsを権威ある検証とします。GitHubが読み取り専用、将来writerのブランチ書き込み/PR作成/Actionsログ閲覧ができない場合は不足する接続権限を報告して停止。OpenAI API課金や外部AI APIキーを追加しないでください。
 
