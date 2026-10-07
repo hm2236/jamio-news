@@ -22,3 +22,5 @@ Reutersは、Anthropicが今後10年で少なくとも5180億ドル規模のAI�
 個人向けGPUや大容量メモリの価格と直接一対一で結びつけることはできません。ただ、巨大AI企業が長期で計算資源を予約する動きは、先端アクセラレータ、HBM、電力設備への需要が長期間強い可能性を示す材料です。
 
 ローカルLLM機を買う側としては、「次世代まで待てば全部安くなる」と決め打ちせず、実際の国内価格推移を見ながら判断するのがよさそうです。
+
+C2 acceptance probe. This non-daily protected-content PR must be rejected by Daily publication guard.
