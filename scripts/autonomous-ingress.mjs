@@ -14,8 +14,31 @@ const matches = (value,pattern) => typeof value === 'string' && pattern.exec(val
 const id = value => matches(value,/^[1-9][0-9]{0,19}$/);
 const attempt = value => Number.isSafeInteger(value) && value > 0;
 const attemptID = value => matches(value,/^[a-z0-9][a-z0-9-]{15,63}$/);
-class IngressRejection extends Error {}
-const fail = message => { throw new IngressRejection(message); };
+class IngressRejection extends Error {
+  constructor(message, code='ingress-rejected') { super(message); this.code = code; }
+}
+const fail = (message,code) => { throw new IngressRejection(message,code); };
+function checked(code, message, operation) {
+  try { return operation(); } catch (error) {
+    if (error instanceof IngressRejection) throw error;
+    fail(message,code);
+  }
+}
+export function rejectionReceipt(error) {
+  return {contract:'jamio-autonomous-package-ingress',version:1,status:'rejected',publicationAuthorized:false,
+    code:error instanceof IngressRejection ? error.code : 'validation-or-read-failed',
+    reason:error instanceof IngressRejection ? error.message : 'Validation or GitHub read failed'};
+}
+const sealCandidate = body => typeof body === 'string' &&
+  (body === inbox.sealMarker || body.startsWith(inbox.sealMarker+'\n') || body.startsWith(inbox.sealMarker+'\r\n'));
+// Shadow artifacts are independent observations, with no winner or write authority.
+const validationPolicy = {version:1,attemptScope:'jst-date',replay:'independent-shadow-validation',
+  multiAttempt:'independent-shadow-validation',selection:'none',exactlyOnce:false};
+function scanWindow(seal) {
+  const createdFrom = new Date(seal.date+'T00:00:00+09:00').toISOString().replace('.000','');
+  // REST since filters updated_at strictly after the value; retain the boundary second.
+  return {createdFrom,since:new Date(Date.parse(createdFrom)-1000).toISOString().replace('.000','')};
+}
 // Reuse fixed repository GET validation with explicit fresh reads for every fence.
 export const ingressJSON = (endpoint,options={}) => githubJSON(endpoint,{...options,
   request: (url,init) => (options.request || fetch)(url,{...init,cache:'no-store'})});
@@ -71,7 +94,7 @@ export function eligibleEvent(event, eventName) {
     event.issue?.number === inbox.issue && !event.issue?.pull_request &&
     event.comment?.user?.id === inbox.actorId && event.sender?.id === inbox.actorId &&
     event.comment?.author_association === inbox.association &&
-    typeof event.comment.body === 'string' && event.comment.body.startsWith(inbox.sealMarker+'\n');
+    sealCandidate(event.comment.body);
 }
 function commentSnapshot(comment) {
   const timestamp = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(value) && Number.isFinite(Date.parse(value));
@@ -82,18 +105,30 @@ function commentSnapshot(comment) {
   return {id:comment.id,userId:comment.user.id,association:comment.author_association,
     issueURL:comment.issue_url,createdAt:comment.created_at,updatedAt:comment.updated_at,body:comment.body};
 }
-async function readInbox(get) {
+async function readInbox(get, seal) {
   const comments = [];
   for (let page=1;page<=inbox.limits.inboxPages;page++) {
-    const rows = await get('/issues/'+inbox.issue+'/comments?per_page=100&page='+page);
+    const rows = await get('/issues/'+inbox.issue+'/comments?per_page=100&page='+page+'&since='+encodeURIComponent(scanWindow(seal).since));
     if (!Array.isArray(rows)) fail('Invalid inbox listing');
     comments.push(...rows);
     if (rows.length < 100) return comments;
   }
-  fail('Inbox scan limit; owner review required');
+  fail('Active JST-day inbox scan limit; owner review required','inbox-window-saturated');
 }
 async function uniqueSeal(get, seal, sealId) {
-  const comments = await readInbox(get);
+  const comments = await readInbox(get,seal);
+  const referenced = new Set(seal.chunkCommentIds);
+  for (const comment of comments) {
+    if (comment.user?.id !== inbox.actorId || comment.author_association !== inbox.association ||
+        typeof comment.body !== 'string') continue;
+    const [marker,line] = comment.body.split(/\r?\n/,2);
+    if (marker !== inbox.chunkMarker) continue;
+    let claim;
+    try { claim = JSON.parse(line); } catch { continue; }
+    // Detect a claimed attempt even when its other header fields are invalid or edited.
+    if (claim?.attemptId === seal.attemptId && !referenced.has(String(comment.id)))
+      fail('Unreferenced chunk for attempt','unreferenced-attempt-chunk');
+  }
   // All well-formed authorized seals for the attempt are observable collisions,
   // including edited ones. A deleted seal cannot provide a durable replay ledger.
   const matches = comments.filter(c=>{
@@ -154,6 +189,8 @@ async function start(checkout,event,runtime,{get,now}) {
   if (!id(String(runtime.runId)) || !attempt(runtime.runAttempt)) fail('Invalid ingress run');
   const eventSeal = commentSnapshot(event.comment);
   const seal = parseSeal(eventSeal.body);
+  if (Date.parse(eventSeal.createdAt) < Date.parse(scanWindow(seal).createdFrom))
+    fail('Seal must be created within its JST date','comment-window-mismatch');
   await mainFence(checkout,seal,runtime,get,now);
   const run = await get('/actions/runs/'+runtime.runId);
   if (String(run.id) !== String(runtime.runId) || run.repository?.full_name !== inbox.repository ||
@@ -208,6 +245,8 @@ export async function validateIngress(checkout,event,runtime,{get=ingressJSON,no
   for (const commentId of seal.chunkCommentIds) {
     const comment = commentSnapshot(await get('/issues/comments/'+commentId));
     if (String(comment.id) !== commentId) fail('Unknown chunk ID');
+    if (Date.parse(comment.createdAt) < Date.parse(scanWindow(seal).createdFrom))
+      fail('Chunk must be created within seal JST date','comment-window-mismatch');
     if (Date.parse(comment.createdAt) > Date.parse(initialSeal.createdAt) ||
         (comment.createdAt === initialSeal.createdAt && comment.id >= initialSeal.id)) fail('Chunk must precede seal');
     initialChunks.push(comment);
@@ -228,11 +267,12 @@ export async function validateIngress(checkout,event,runtime,{get=ingressJSON,no
     fs.mkdirSync(path.join(draft,'articles'),{recursive:true});
     for (const [name,text] of files) if (name !== 'editorial.json') fs.writeFileSync(path.join(draft,name),text,{flag:'wx'});
     fs.writeFileSync(path.join(draft,'prices.json'),'[]\n',{flag:'wx'});
-    const bundle = readDraft(draft);
+    const bundle = checked('draft-invalid','Draft structure or publishing contract rejected',()=>readDraft(draft));
     const evidence = {version:1,context:binding.context,reportDigest:digest(canonical(report)),
       packageDigest:digest(canonical(bundle)),stories:editorial.stories};
-    const evaluation = evaluateDraft(checkout,report,draft,evidence,binding.context,now());
-    const plan = planDraft(checkout,draft);
+    const evaluation = checked('evidence-invalid','Evidence or publishing acceptance rejected',
+      ()=>evaluateDraft(checkout,report,draft,evidence,binding.context,now()));
+    const plan = checked('plan-invalid','Content plan rejected',()=>planDraft(checkout,draft));
     const expectedFiles = ['content/editions/'+seal.slug+'.md',...[...files.keys()].filter(f=>f.startsWith('articles/')).map(f=>'content/'+f)].sort();
     if (canonical(plan.writes.map(w=>w.file).sort()) !== canonical(expectedFiles)) fail('Package must be exactly six new content files; no updates or prices');
     const normalizedDraft = Object.fromEntries([
@@ -249,16 +289,22 @@ export async function validateIngress(checkout,event,runtime,{get=ingressJSON,no
         canonical(await selectCollectorArtifact(seal,finalBinding,{get})) !== canonical(collector)) fail('Collector altered during validation');
     await mainFence(checkout,seal,runtime,get,now);
     const validatedAt = now();
-    fence(binding.context,finalBinding.context,validatedAt);
+    checked('stale-context','Final validation timestamp or context rejected',
+      ()=>fence(binding.context,finalBinding.context,validatedAt));
+    const provenance = {version:1,scanWindow:scanWindow(seal),validationPolicy,
+      seal:{...initialSeal,bodyDigest:digest(initialSeal.body)},
+      chunks:initialChunks.map(comment=>({...comment,bodyDigest:digest(comment.body)}))};
     const receipt = {contract:'jamio-autonomous-package-ingress',version:1,status:'validated',
       workflow:inbox.workflow,runId:String(runtime.runId),runAttempt:runtime.runAttempt,
       repository:inbox.repository,inboxIssue:inbox.issue,sealCommentId:String(initialSeal.id),producerActorId:inbox.actorId,
       attemptId:seal.attemptId,date:seal.date,slug:seal.slug,variant:'morning',expectedBaseSha:seal.baseSha,
       collectorRunId:seal.collectorRunId,collectorRunAttempt:seal.collectorRunAttempt,collectorArtifactId:collector.id,
+      validationPolicy,chunkCommentIds:seal.chunkCommentIds,sealBodyDigest:digest(initialSeal.body),
+      evidenceDigest:digest(canonical(evidence)),provenanceDigest:digest(canonical(provenance)),
       reportDigest:evidence.reportDigest,packageDigest:evidence.packageDigest,editionUrl:evaluation.editionUrl,
       editionDigest:evaluation.digest,validatedFiles:expectedFiles,validatedAt:jst(validatedAt),publicationAuthorized:false};
     return {artifactName:'validated-package-'+initialSeal.id+'-'+runtime.runId+'-'+runtime.runAttempt,
-      receipt,evidence,collector,normalizedDraft};
+      receipt,evidence,collector,provenance,normalizedDraft};
   } finally {
     if (path.dirname(path.resolve(temporary)) !== path.resolve(os.tmpdir())) fail('Unsafe temporary cleanup');
     fs.rmSync(temporary,{recursive:true,force:true});
@@ -270,7 +316,7 @@ export function saveValidated(output,result) {
   const draft = path.join(output,'draft',result.receipt.slug);
   fs.mkdirSync(path.join(draft,'articles'),{recursive:true});
   for (const [name,text] of Object.entries(result.normalizedDraft)) fs.writeFileSync(path.join(draft,name),text,{flag:'wx'});
-  for (const name of ['receipt','evidence','collector']) fs.writeFileSync(path.join(output,name+'.json'),JSON.stringify(result[name],null,2)+'\n',{flag:'wx'});
+  for (const name of ['receipt','evidence','collector','provenance']) fs.writeFileSync(path.join(output,name+'.json'),JSON.stringify(result[name],null,2)+'\n',{flag:'wx'});
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
@@ -294,8 +340,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     } else fail('Usage: autonomous-ingress.mjs prepare <collector.json> | validate <collector.json> <download-folder> <new-output-folder>');
   } catch (error) {
     // Do not echo hostile payload, URLs, filesystem names, source text or credential-bearing exceptions.
-    console.error('JAMIO_PACKAGE_INGRESS '+JSON.stringify({contract:'jamio-autonomous-package-ingress',version:1,status:'rejected',publicationAuthorized:false,
-      reason:error instanceof IngressRejection ? error.message : 'Validation or GitHub read failed'}));
+    const receipt = rejectionReceipt(error);
+    console.error('JAMIO_PACKAGE_INGRESS '+JSON.stringify(receipt));
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+      '## Package ingress shadow\n\nRejected: '+receipt.code+'. '+receipt.reason+'\nPublication authorized: false.\n');
     process.exitCode = 1;
   }
 }

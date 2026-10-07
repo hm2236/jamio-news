@@ -45,7 +45,7 @@ function fixture(t) {
   return {root,ctx,folder,report,evidence,articles,edition,save,evaluate};
 }
 
-import {inbox,parseSeal,parseChunk,eligibleEvent,prepareIngress,validateIngress,reconstruct,readCollectorReport,saveValidated,ingressJSON} from '../scripts/autonomous-ingress.mjs';
+import {inbox,parseSeal,parseChunk,eligibleEvent,prepareIngress,validateIngress,reconstruct,readCollectorReport,saveValidated,ingressJSON,rejectionReceipt} from '../scripts/autonomous-ingress.mjs';
 
 function ingressFixture(t) {
   const f=fixture(t);
@@ -80,11 +80,16 @@ function ingressFixture(t) {
     f.calls.push(endpoint);f.hooks(endpoint,f.calls.filter(x=>x===endpoint).length);
     let value;
     if(endpoint==='/git/ref/heads/main')value={ref:'refs/heads/main',object:{type:'commit',sha:f.mainSha}};
-    else if(endpoint==='/actions/runs/900')value={id:900,repository:{full_name:inbox.repository},path:inbox.workflow,event:'issue_comment',head_branch:'main',head_sha:f.sha,run_attempt:1};
+    else if(endpoint==='/actions/runs/900')value={id:900,repository:{full_name:inbox.repository},path:inbox.workflow,event:'issue_comment',head_branch:'main',head_sha:f.sha,run_attempt:f.runtime.runAttempt};
     else if(endpoint==='/actions/runs/123')value=f.run;
     else if(endpoint.startsWith('/actions/runs/123/artifacts?'))value={artifacts:f.artifacts};
     else if(endpoint==='/issues/37')value={number:37,url:'https://api.github.com/repos/'+inbox.repository+'/issues/37'};
-    else if(endpoint.startsWith('/issues/37/comments?'))value=[...f.comments.values()];
+    else if(endpoint.startsWith('/issues/37/comments?')){
+      const query=new URLSearchParams(endpoint.split('?')[1]),since=Date.parse(query.get('since'));
+      assert.ok(Number.isFinite(since),'inbox scan must have a bounded since window');
+      const rows=[...f.comments.values()].filter(c=>Date.parse(c.updated_at)>since).sort((a,b)=>a.id-b.id);
+      const offset=(Number(query.get('page'))-1)*100;value=rows.slice(offset,offset+100);
+    }
     else if(endpoint.startsWith('/issues/comments/')){
       value=f.comments.get(endpoint.split('/').at(-1));if(!value)throw new Error('Missing chunk comment');
     }else if(endpoint==='/git/ref/heads/daily/'+f.ctx.slug){assert.equal(options.allow404,true);value=f.branch;}
@@ -113,7 +118,17 @@ test('valid ingress uses evaluateDraft, generates trusted digests and receipt, n
   assert.equal(result.receipt.packageDigest,digest(canonical(readDraft(path.join(output,'draft',f.ctx.slug)))));
   assert.equal(result.receipt.editionDigest.length,64);assert.equal(result.receipt.validatedFiles.length,6);
   assert.equal(result.artifactName,'validated-package-99-900-1');
-  assert.deepEqual(fs.readdirSync(output).sort(),['collector.json','draft','evidence.json','receipt.json']);
+  assert.deepEqual(fs.readdirSync(output).sort(),['collector.json','draft','evidence.json','provenance.json','receipt.json']);
+  const saved=name=>JSON.parse(fs.readFileSync(path.join(output,name+'.json'),'utf8'));
+  assert.equal(result.receipt.evidenceDigest,digest(canonical(saved('evidence'))));
+  assert.equal(result.receipt.provenanceDigest,digest(canonical(saved('provenance'))));
+  assert.deepEqual(result.receipt.chunkCommentIds,f.seal.chunkCommentIds);
+  assert.deepEqual(result.provenance.chunks.map(c=>String(c.id)),f.seal.chunkCommentIds);
+  for(const comment of [result.provenance.seal,...result.provenance.chunks])
+    assert.equal(comment.bodyDigest,digest(f.comments.get(String(comment.id)).body));
+  assert.equal(result.receipt.sealBodyDigest,digest(result.provenance.seal.body));
+  const altered=saved('evidence');altered.stories[0].impact+=' tampered';
+  assert.notEqual(digest(canonical(altered)),result.receipt.evidenceDigest);
   assert.deepEqual(repositoryDigests(loadRepository(f.root)),before);
   assert.ok(!fs.existsSync(path.join(f.root,'content/editions',f.ctx.slug+'.md')));
   assert.throws(()=>saveValidated(output,result),/EEXIST/);
@@ -225,7 +240,7 @@ for(const [name,endpoint,change] of [
   ['chunk metadata edit','/issues/comments/10',f=>f.comments.get('10').updated_at='2026-10-06T21:31:00Z'],
   ['seal edit','/issues/comments/99',f=>f.comments.get('99').body+='\n'],
   ['collector rerun','/actions/runs/123',f=>f.run.run_attempt=2],
-  ['new concurrent seal','/issues/37/comments?per_page=100&page=1',f=>{const c=structuredClone(f.comments.get('99'));c.id=100;f.comments.set('100',c);}],
+  ['new concurrent seal','/issues/37/comments?per_page=100&page=1&since=2026-10-06T14%3A59%3A59Z',f=>{const c=structuredClone(f.comments.get('99'));c.id=100;f.comments.set('100',c);}],
   ['new candidate conflict','/git/ref/heads/daily/2026-10-07-morning',f=>f.branch={object:{sha:f.sha}}],
   ['main advancement','/git/ref/heads/main',f=>f.mainSha='b'.repeat(40)],
   ['JST rollover','/git/ref/heads/main',f=>f.clock=new Date('2026-10-08T00:00:00+09:00')]
@@ -254,7 +269,7 @@ test('bounded inbox scan and API failures fail closed',async t=>{
   await assert.rejects(f.validate,/scan limit/);f.get=async()=>{throw new Error('Network unavailable');};await assert.rejects(f.validate,/Network/);
 });
 test('workflow is trusted-main, seal gated, queued, downloads collector independently and contains no write credentials',()=>{
-  const workflow=fs.readFileSync(path.join(sourceRoot,inbox.workflow),'utf8');
+  const workflow=fs.readFileSync(path.join(sourceRoot,inbox.workflow),'utf8').replace(/\r\n/g,'\n');
   for(const value of [inbox.repository,inbox.issue,inbox.actorId,inbox.association,inbox.sealMarker])assert.ok(workflow.includes(String(value)));
   assert.match(workflow,/issue_comment:\n\s+types: \[created\]/);assert.match(workflow,/!github\.event\.issue\.pull_request/);
   assert.match(workflow,/queue: max/);assert.doesNotMatch(workflow,/cancel-in-progress/);
@@ -262,7 +277,11 @@ test('workflow is trusted-main, seal gated, queued, downloads collector independ
   assert.match(workflow,/actions\/download-artifact@v4/);assert.match(workflow,/artifact-ids:/);
   assert.match(workflow,/overwrite: false/);assert.match(workflow,/retention-days: 14/);
   assert.doesNotMatch(workflow,/\bwrite\b|secrets\.|git push|gh pr|deploy-pages|workflow_dispatch:/);
-  const permissions=workflow.slice(workflow.indexOf('permissions:'),workflow.indexOf('concurrency:'));
+  assert.doesNotMatch(workflow.slice(0,workflow.indexOf('jobs:')),/concurrency:/);
+  assert.match(workflow,/    concurrency:\n      group: autonomous-package-inbox\n      queue: max/);
+  assert.ok(workflow.indexOf('    if:')<workflow.indexOf('    concurrency:'));
+  assert.ok(workflow.includes('fromJSON(\'"\\r\\n"\')'));
+  const permissions=workflow.slice(workflow.indexOf('permissions:'),workflow.indexOf('jobs:'));
   assert.deepEqual([...permissions.matchAll(/^\s+([\w-]+): read/gm)].map(m=>m[1]).sort(),['actions','contents','issues','pull-requests']);
   const source=fs.readFileSync(path.join(sourceRoot,'scripts/autonomous-ingress.mjs'),'utf8');
   assert.doesNotMatch(source,/eval\(|execSync\(|applyDraft\(/);
@@ -297,4 +316,105 @@ test('strict ASCII identities and paths reject final newlines; UTF-8 rejects NUL
   const file='articles/'+f.articles[0].slug+'.md';
   assert.throws(()=>parseChunk(f.chunkBody(file+'\n','payload'),f.seal),/Forbidden/);
   for(const text of ['nul\0byte','unpaired\uD800'])assert.throws(()=>parseChunk(f.chunkBody(file,text),f.seal),/UTF-8/);
+});
+
+test('retained multi-year inbox history does not consume the active-day scan budget',async t=>{
+  const f=ingressFixture(t);
+  for(let i=1000;i<5000;i++){
+    const c=f.metadata(i,'historical comment');c.created_at=c.updated_at='2026-10-05T00:00:00Z';
+    f.comments.set(String(i),c);
+  }
+  const result=await f.validate();assert.equal(result.receipt.status,'validated');
+  const scans=f.calls.filter(e=>e.startsWith('/issues/37/comments?'));
+  assert.equal(scans.length,2);assert.ok(scans.every(e=>e.endsWith('&since=2026-10-06T14%3A59%3A59Z')));
+  assert.equal(result.provenance.scanWindow.createdFrom,'2026-10-06T15:00:00Z');
+});
+
+test('active-window pagination still checks a duplicate seal on a later page',async t=>{
+  const f=ingressFixture(t);
+  for(let i=1000;i<1200;i++)f.comments.set(String(i),{...f.metadata(i,'unrelated'),user:{id:1}});
+  const c=structuredClone(f.comments.get('99'));c.id=2000;f.comments.set('2000',c);
+  await assert.rejects(f.validate,/Multiple or missing seals/);
+  assert.ok(f.calls.some(e=>e.includes('page=3&since=')));
+});
+
+for(const phase of ['initial','final'])for(const shape of ['valid','edited','invalid header fields'])
+  test(phase+' scan rejects '+shape+' unreferenced same-attempt chunk',async t=>{
+    const f=ingressFixture(t);
+    const add=()=>{
+      const c=f.metadata(100,f.chunkBody('edition.md','conflicting payload'));
+      if(shape==='edited')c.updated_at='2026-10-06T21:44:01Z';
+      if(shape==='invalid header fields')c.body=c.body.replace('"part":1','"part":0');
+      f.comments.set('100',c);
+    };
+    if(phase==='initial')add();
+    else f.hooks=(endpoint,count)=>{if(endpoint.startsWith('/issues/37/comments?')&&count===2)add();};
+    await assert.rejects(f.validate,error=>rejectionReceipt(error).code==='unreferenced-attempt-chunk');
+  });
+
+test('unrelated attempts and unauthorized unreferenced chunks do not collide',async t=>{
+  const f=ingressFixture(t);
+  f.comments.set('100',f.metadata(100,f.chunkBody('edition.md','other attempt').replace(f.attemptId,'producer-attempt-0002')));
+  f.comments.set('101',{...f.metadata(101,f.chunkBody('edition.md','untrusted')),user:{id:1}});
+  assert.equal((await f.validate()).receipt.status,'validated');
+});
+
+test('day-bound references reject old chunks and seals, including the since boundary second',async t=>{
+  const f=ingressFixture(t),c=f.comments.get('10');
+  c.created_at=c.updated_at='2026-10-06T14:59:59Z';
+  await assert.rejects(f.validate,error=>rejectionReceipt(error).code==='comment-window-mismatch');
+  c.created_at=c.updated_at='2026-10-06T15:00:00Z';
+  assert.equal((await f.validate()).receipt.status,'validated');
+  f.comments.get('99').created_at=f.comments.get('99').updated_at='2026-10-06T14:59:59Z';f.syncSeal();
+  await assert.rejects(f.validate,error=>rejectionReceipt(error).code==='comment-window-mismatch');
+});
+
+test('an old same-attempt chunk edited into the active window is observable and rejected',async t=>{
+  const f=ingressFixture(t),c=f.metadata(100,f.chunkBody('edition.md','old conflict'));
+  c.created_at='2026-10-05T00:00:00Z';c.updated_at='2026-10-06T21:40:00Z';f.comments.set('100',c);
+  await assert.rejects(f.validate,/Unreferenced chunk/);
+});
+
+test('replays and multiple attempts are explicit independent shadow observations without a winner',async t=>{
+  const f=ingressFixture(t),first=await f.validate();f.runtime.runAttempt=2;
+  const replay=await f.validate();assert.equal(replay.receipt.packageDigest,first.receipt.packageDigest);
+  assert.notEqual(replay.artifactName,first.artifactName);
+  assert.deepEqual(replay.receipt.validationPolicy,{version:1,attemptScope:'jst-date',
+    replay:'independent-shadow-validation',multiAttempt:'independent-shadow-validation',selection:'none',exactlyOnce:false});
+  const old=structuredClone(f.comments.get('99'));old.id=98;f.comments.set('98',old);
+  for(const commentId of f.seal.chunkCommentIds){
+    const c=f.comments.get(commentId);c.body=c.body.replace(f.attemptId,'producer-attempt-0002');
+  }
+  f.attemptId=f.seal.attemptId='producer-attempt-0002';f.syncSeal();
+  // The first immutable artifact remains independent; no supersession is claimed.
+  f.articles[0].body+='\nA different shadow observation.\n';payload(f,10,serialize(f.articles[0]));
+  const other=await f.validate();assert.notEqual(other.receipt.packageDigest,first.receipt.packageDigest);
+  assert.equal(other.receipt.validationPolicy.selection,'none');assert.equal(other.receipt.publicationAuthorized,false);
+});
+
+test('CRLF and marker-only seals route to sanitized rejection instead of silently skipping',async t=>{
+  const f=ingressFixture(t);
+  for(const body of [f.event.comment.body.replace(/\n/g,'\r\n'),inbox.sealMarker]){
+    f.event.comment.body=body;assert.equal(eligibleEvent(f.event,f.runtime.eventName),true);
+    await assert.rejects(f.validate,/Malformed marker/);assert.equal(f.calls.length,0);
+  }
+});
+
+test('evaluator diagnostics distinguish semantic rejection without printing source or payload',async t=>{
+  const f=ingressFixture(t);f.evidence.stories[0].claims[0].citations[0].excerpt='secret-source-not-in-report';
+  payload(f,16,JSON.stringify({version:1,stories:f.evidence.stories}));
+  await assert.rejects(f.validate,error=>{
+    const receipt=rejectionReceipt(error);assert.equal(receipt.code,'evidence-invalid');
+    assert.doesNotMatch(JSON.stringify(receipt),/secret-source/);return true;
+  });
+  const receipt=rejectionReceipt(new Error('credential-secret host/path raw-payload'));
+  assert.equal(receipt.code,'validation-or-read-failed');assert.doesNotMatch(JSON.stringify(receipt),/credential-secret|raw-payload|host\/path/);
+});
+
+test('the final receipt timestamp itself is fenced at expiry',async t=>{
+  const f=ingressFixture(t),options=f.options();let reads=0;
+  options.now=()=>new Date(++reads<6?'2026-10-07T07:59:59+09:00':'2026-10-07T08:00:01+09:00');
+  await assert.rejects(()=>validateIngress(f.root,f.event,f.runtime,options),error=>{
+    assert.equal(rejectionReceipt(error).code,'stale-context');return true;
+  });assert.equal(reads,6);
 });

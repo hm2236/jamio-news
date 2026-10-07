@@ -7,9 +7,6 @@ permissions:
   issues: read
   actions: read
   pull-requests: read # Existing daily branch/PR conflict check; never writes.
-concurrency:
-  group: autonomous-package-inbox
-  queue: max
 jobs:
   ingress:
     # Cheap event gate mirrors config/autonomous-ingress.json (covered by tests).
@@ -21,7 +18,13 @@ jobs:
       github.event.comment.user.id == 42599072 &&
       github.event.sender.id == 42599072 &&
       github.event.comment.author_association == 'OWNER' &&
-      startsWith(github.event.comment.body, format('JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1{0}', fromJSON('"\n"')))
+      (github.event.comment.body == 'JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1' ||
+       startsWith(github.event.comment.body, format('JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1{0}', fromJSON('"\n"'))) ||
+       startsWith(github.event.comment.body, format('JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1{0}', fromJSON('"\r\n"'))))
+    # Only seal candidates enter this queue; skipped chunk/other-comment jobs do not.
+    concurrency:
+      group: autonomous-package-inbox
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

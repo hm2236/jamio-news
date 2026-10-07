@@ -27,6 +27,8 @@ Use raw UTF-8, LF separators in the marker/header framing, no code fences, comme
 indentation, BOM or surrounding text. The header is one compact JSON object line:
 JSON.stringify(JSON.parse(line)) must equal line. Key order may vary, whitespace outside
 strings and duplicate keys are rejected. All fields are required; unknown fields are rejected.
+CRLF-framed and marker-only seal candidates enter the job and receive a sanitized rejection;
+they are not silently skipped. CRLF framing is not normalized into accepted input.
 
 A chunk is exactly marker + LF + header + LF + LF + a nonempty raw UTF-8 payload.
 Payload newlines, including CRLF, are preserved; no base64 or hashes are required.
@@ -62,8 +64,14 @@ updates or deletes are permitted. Exactly six new repository content files must 
 The morning-only ingress contract does not extend autonomous evidence to evening.
 
 Limits: at most 28 referenced comments, 4 parts per logical file, 24 KiB UTF-8 payload per
-part, 256 KiB total reconstructed payload and 8 KiB header per comment. The inbox scan is
-bounded to 20 pages of 100 comments; a saturated inbox fails closed for owner review.
+part, 256 KiB total reconstructed payload and 8 KiB header per comment. Initial and final
+inbox scans use REST `since` from one second before the seal date's JST midnight. This is
+an updated-at window, so historical comments edited into the window are still inspected.
+Referenced chunks and the seal must have been created on that JST date. Untouched older
+history does not consume the scan budget, and no comments are deleted for rollover.
+The active window is bounded to 20 pages of 100 comments; saturation fails closed with
+`inbox-window-saturated` for owner review. This removes cumulative lifetime exhaustion,
+not the possibility of a one-day flood. `provenance.json` records the exact window.
 Collector artifact compressed size is at most 16 MiB and downloaded report size at most
 32 MiB. Output is bounded by the input package and derived evidence; it excludes collector
 source text. NUL and unpaired surrogate payloads are rejected.
@@ -91,6 +99,9 @@ triggering event's body and relevant metadata. Refetched issue must be an issue,
 Observable, authorized, well-formed multiple seals for the same attempt reject the attempt
 at both initial and final scans. A new attempt requires a new attempt ID and new comments.
 No automatic cleanup or partial resume is implemented.
+At both scans, any authorized chunk claiming the same attempt ID but absent from the seal's
+reference list rejects with `unreferenced-attempt-chunk`, including a chunk added during
+validation. Detectable claims are rejected even if edited or other header fields are invalid.
 
 ## Independent trusted collector binding
 
@@ -145,14 +156,25 @@ Contents:
 - receipt.json: contract/version/status, workflow run ID/attempt, repository/inbox,
   seal comment ID, producer actor ID, attempt/date/slug/variant/expected base,
   collector run ID/attempt/artifact ID, report/package/edition digests, edition URL,
-  validated repository file list, JST validatedAt and publicationAuthorized=false.
+  validated repository file list, JST validatedAt and publicationAuthorized=false, plus
+  ordered chunkCommentIds, sealBodyDigest, evidenceDigest, provenanceDigest and validationPolicy.
 - collector.json: selected artifact ID/name, collector run/attempt/base, creation time and
   size; the full source collector artifact is not duplicated.
+- provenance.json: exact consumed seal and ordered chunk snapshots (including raw bodies,
+  author/association/issue/timestamps and SHA-256 body digests), scan window and validationPolicy.
+  evidenceDigest and provenanceDigest use SHA-256 over the existing canonical JSON serializer;
+  body digests use the raw UTF-8 strings. Consumers can recompute all these bindings without
+  reading mutable comments. Raw producer bodies remain inert artifact data, not log output.
 
 One JAMIO_PACKAGE_INGRESS JSON log line records validated or rejected status. Validated
 never means published. The edition URL is the candidate URL, not proof that it exists.
 A validation log alone also does not prove artifact upload succeeded: consumers require the
 successful ingress workflow and its matching retained artifact.
+Rejected receipts include a fixed diagnostic code. Draft structure (`draft-invalid`),
+evaluator acceptance (`evidence-invalid`), content plan (`plan-invalid`) and final timestamp
+(`stale-context`) are distinguishable; unexpected or GitHub read errors use a generic
+`validation-or-read-failed`. Raw exception messages, source excerpts, paths and tokens are
+never echoed. A sanitized rejection is also recorded in the job summary.
 
 A future writer must consume this immutable Actions artifact and receipt, recompute package
 bindings and re-fence main/date/attempt/lease immediately before its independently authorized
@@ -176,8 +198,17 @@ The equal-second edit invariant depends on GitHub timestamp behavior; final refe
 observed changes, not a transient edit/revert invisible to GitHub metadata. Deleted seals
 and identical reruns cannot be globally deduplicated without a durable lease/replay ledger.
 A rerun can produce a separately named shadow artifact; it grants no publication authority.
+The explicit `validationPolicy` is version 1, attemptScope=`jst-date`,
+replay=`independent-shadow-validation`, multiAttempt=`independent-shadow-validation`,
+selection=`none`, exactlyOnce=false. Replays and different attempts for one edition may
+each validate independently; none supersedes another or selects a publishable winner.
+Attempt IDs require fresh comments on their date; observable duplicate same-attempt seals
+in the active window reject. Deleted or untouched out-of-window history is not a replay
+ledger. A future writer must implement separately reviewed durable deduplication and selection.
 
-Concurrency queue: max serializes and preserves up to GitHub's queue bound; it is not a
+Job-level concurrency is entered only after the seal-candidate gate; chunk and unrelated
+comment jobs are skipped without occupying its queue. Concurrency queue: max serializes
+and preserves up to GitHub's queue bound; it is not a
 durable lease or unbounded queue and does not promise absolute dispatch FIFO. Expired or
 deleted artifacts and saturated inboxes fail closed, with no automatic cleanup. Artifact
 decompression is handled by the standard action after trusted collector provenance and
