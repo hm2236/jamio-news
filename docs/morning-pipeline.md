@@ -1,6 +1,6 @@
 # 06:00 JST制作開始・07:00 JST公開目標のハンドオフ
 
-自動刊行の段階導入は[Autonomous Publication v1](autonomous-publication.md)を参照。GitHub側のread-only scheduled shadow収集を追加し、既存ChatGPT予定タスクを維持します。shadowは制作・公開成功ではありません。本稿のPR-1 guard/CI/receipt規則を正本として使い、新しいLLM API課金を追加しません。
+自動刊行の段階導入は[Autonomous Publication v1](autonomous-publication.md)を参照。Scheduled Task草稿の受け渡しはIssue #37の[package ingress shadow](autonomous-publication.md#producer-package-ingressshadow-only)で検証済みartifactにするだけで、公開・PR作成はしません。GitHub側のread-only scheduled shadow収集を追加し、既存ChatGPT予定タスクを維持します。shadowは制作・公開成功ではありません。本稿のPR-1 guard/CI/receipt規則を正本として使い、新しいLLM API課金を追加しません。
 
 日をまたぐ続報は[連続ニュースのシリーズ設計](news-series-design.md)、[段階1の表示・人手登録・追加公開証明](news-series-display.md)、[段階2のdetached提案と評価基盤](news-series-shadow.md)を参照。sidecarから前後リンクをbuild時導出します。通常の日刊ではseries metadata/sidecarを追加せず、登録は別の人手レビューPRです。series公開完了はexact merged mainのPages成功と既存edition証明に加え `JAMIO_SERIES_PUBLIC_RECEIPT` のregistry/navigation digest・revision・URL・HTMLを照合します。既存号・記事・digestを変えず、同じ企業という理由だけで既刊記事を再掲しません。提案はread-only検証のみで、LLM自動接続・7日評価・自動付与は未完了です。
 

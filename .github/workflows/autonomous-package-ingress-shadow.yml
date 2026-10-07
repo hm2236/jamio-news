@@ -1,0 +1,62 @@
+name: Autonomous package ingress shadow
+# SHADOW ONLY. issue_comment always runs this file from the default branch.
+# Producer comments are untrusted data; nothing here writes Git content, PRs,
+# merges, Pages, notifications or Issue comments.
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  pull-requests: read
+concurrency:
+  # Serialize the inbox and preserve every pending seal run; never cancel.
+  group: package-ingress-${{ github.event.issue.number }}
+  queue: max
+jobs:
+  ingress:
+    # Cheap pre-filter only; scripts/package-ingress.mjs re-verifies all of it from config/package-ingress.json.
+    if: >-
+      github.repository == 'hm2236/jamio-news' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.issue.number == 37 &&
+      !github.event.issue.pull_request &&
+      github.event.comment.user.id == 42599072 &&
+      github.event.comment.author_association == 'OWNER' &&
+      startsWith(github.event.comment.body, 'JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify seal, main/date fence and trusted collector run
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/package-ingress.mjs plan
+      - name: Download trusted collector artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.plan.outputs.collector-run }}
+          artifact-ids: ${{ steps.plan.outputs.artifact-id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/package-ingress/collector
+      - name: Reconstruct and validate package (read-only)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COLLECTOR_ARTIFACT_ID: ${{ steps.plan.outputs.artifact-id }}
+        run: node scripts/package-ingress.mjs validate
+      - name: Retain immutable validated package and receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-package-${{ github.event.comment.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/package-ingress/validated/
+          retention-days: 14
+          if-no-files-found: error

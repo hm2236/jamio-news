@@ -107,6 +107,65 @@ enrich/evaluateはlive GitHub GETで正しいshadow workflow、最新attempt、m
 
 **機械検証は意味的真偽を証明しない。** 原典引用と主張の含意、英日翻訳、発表日・beta/予定/提供済み、ベンチマーク条件、本人性、未列挙の本文主張、重要性、同イベントの別URL、引用量・利用条件は人間/編集評価が必要。digestは改ざん検出・結び付けであり署名でも認証でもない。shadow artifact/evidenceを自動刊行権限として使わない。将来はcollectorの信頼済みrun/artifact認証とtrusted main CI必須検証が必要。
 
+## Producer package ingress（SHADOW ONLY）
+
+[Issue #37](https://github.com/hm2236/jamio-news/issues/37) を専用inboxとして、ChatGPT Scheduled Task（editorial producer）が投稿した**不信な**Issue commentを、trusted mainのworkflowが検証済みpackage artifactへ変換する段階。`validated` は `published` ではなく、receiptは常に `publicationAuthorized=false`。branch/PR/merge/Pages/通知/Issue comment書込み、GitHub App secret、writerは存在しない。共有ChatGPT GitHub installationは変更・縮小しない。
+
+```text
+Scheduled Task → Issue #37 chunk comments → seal comment
+→ autonomous-package-ingress-shadow.yml（issue_comment created、default branchのコード）
+→ seal/event/actor再検証 → main/JST日付fence → collector run検証 → trusted collector artifact取得
+→ chunk再構成 → 既存evaluateDraft → 終了時の全comment再取得・main/日付/collector再fence
+→ validated-package-<sealCommentId>-<runId>-<runAttempt> artifact + JAMIO_PACKAGE_INGRESS log
+```
+
+### 受理条件（[config/package-ingress.json](../config/package-ingress.json)）
+
+repository `hm2236/jamio-news`、Issue #37（PRではない）、actor数値ID `42599072`、author association `OWNER`、`issue_comment` の `created` だけ。workflowの `if:` は同じliteralの安価な事前filterで、正本はconfigと [scripts/package-ingress.mjs](../scripts/package-ingress.mjs)（テストで一致を検証）。seal markerで始まるcommentだけが重い検証を起動する。ingress v1は朝刊のみ。
+
+### Comment protocol
+
+chunk（1行目marker、2行目は**この順序・空白なし**の1行JSON、3行目は空行、以降はraw UTF-8 payload）:
+
+```text
+JAMIO_AUTONOMOUS_PACKAGE_CHUNK_V1
+{"version":1,"attemptId":"morning-20261007-a1b2c3d4","file":"articles/2026-10-07-morning-story.md","part":1,"parts":2}
+
+<raw payload>
+```
+
+seal（2行のみ。chunksは昇順comment ID）:
+
+```text
+JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1
+{"version":1,"attemptId":"morning-20261007-a1b2c3d4","date":"2026-10-07","slug":"2026-10-07-morning","variant":"morning","baseSha":"<40 hex>","collectorRunId":"<run id>","collectorRunAttempt":1,"chunks":[111,222]}
+```
+
+- headerは `JSON.stringify` と完全一致が必要。追加/欠落/重複/並べ替えkey、空白、escape揺れは拒否。CRLFはLFへ正規化し、NUL/単独CRは拒否。
+- attemptIdは既存Candidate-Attempt trailerと同じ16〜64文字の小文字英数字・ハイフン（先頭英数字）。
+- fileは `edition.md`、`editorial.json`、`articles/<slug>-<story>.md` だけ。`data/prices.json`、workflow/script、traversal、大文字、サブディレクトリは拒否。`prices.json` はtrusted codeが `[]` を書く。
+- multipart: payload末尾の改行1個を除去し、partを `\n` で連結、ファイル末尾に `\n` を付ける。**分割は改行位置で行う**。
+- packageは対象slugの新規記事ちょうど5本＋edition＋`editorial.json`。`editorial.json` は `{"version":1,"stories":[...]}` だけ（storiesは[autonomous.schema.json](../contracts/autonomous.schema.json)のstory）。`reportDigest`/`packageDigest`/`context` は受け付けない。**producerはhashを計算しない。**
+- 上限: chunk 40、file当たりpart 8、part 64KiB、file 256KiB、package 1MiB、inbox走査はcollector run作成以後のcomment 1,000件。
+
+### Trusted binding・fence
+
+- sealはAPIで再取得し、triggering eventのbody/時刻と一致、`created_at == updated_at`。全chunkはIssue #37・同actor・OWNER・同attempt・未編集・seal以前・collector run作成以後。重複ID/part、欠落part、part数不一致、未知ID、同attemptの別sealや未参照chunk（認可actorのもの）は拒否。
+- collector runは `.github/workflows/autonomous-shadow.yml`、`main`、schedule/workflow_dispatch、completed/success、最新attempt＝seal attempt、head SHA＝baseSha、JST日付一致。artifact `morning-shadow-<runId>-<attempt>` は1件・未失効・同run/SHA・16MiB以下で、Actions credentialsでdownloadし `report.json` だけを含むこと。reportのcontextはsealと一致し、status=`awaiting-editorial`。
+- 開始時と成功直前に live `refs/heads/main`＝baseSha＝`GITHUB_SHA`＝checkout HEAD、現在JST日付＝date。既存 `fence`（collector開始から2時間以内、attempt/run/main/windowStart同一）も再実行する。同slugの既存号、`daily/<slug>` branch、open PR、部分記事は拒否。
+- evidenceはtrusted codeが組み立てる: context＝collector report、`reportDigest=sha256(canonical(report))`、`packageDigest=sha256(canonical(readDraft()))`、stories＝`editorial.json`。検証は既存 `evaluateDraft()`（publishing schema、planDraft、出典/引用、鮮度、event時刻、既存digest不変）そのもの。
+- 終了時にsealと全参照chunkを再取得し、body digest・actor・association・時刻をbyte/構造比較、package全体を再構成して一致を確認。実行中の編集・追加sealは失敗。
+
+### 成果物・receipt
+
+成功時だけ14日保持のartifactを作る: `draft/<slug>/`（trusted再serializeしたedition/articles、`prices.json=[]`、packageDigest一致を自己検査）、`evidence.json`、`collector.json`（run/attempt/artifact参照とreportDigest。collector本文は複製しない）、`receipt.json`。receiptは contract/version、workflow run/attempt/SHA、inbox、seal comment ID/body digest、producer actor/association/app、attemptId、date/slug/variant、baseSha、collector run/attempt/artifact、chunk一覧、reportDigest/packageDigest/evidenceDigest、edition URL/digest、validated files、validatedAt、`publicationAuthorized=false` を束ねる。ログは1行の `JAMIO_PACKAGE_INGRESS {...}`、拒否時は `status=rejected` と固定code。将来writerは可変なIssue commentを再信頼せず、このartifact/receiptだけを消費する。自動cleanup・partial packageのresumeはない。再試行は新attemptIdと新commentで行う。
+
+### 残余リスク
+
+- **trusted enrichment未接続**: 既存collectorはregistryの一覧ページだけを取得し、`evaluateDraft` は一覧URLをeventUrlとして拒否する。具体的原典のsnapshotをtrusted collectorが取得する経路（producerの `enrich` 出力は受け付けない）がない限り、実packageは `evidence-invalid` になる。実producer acceptanceの前に別ゲートで設計する。
+- 認証はGitHub account（ID 42599072・OWNER）単位。同accountの他のtool/人手commentも同じ権限を持つ。commentの編集検出は `updated_at` と終了時比較に依存する。
+- collector開始から2時間以内・同JST日付・main不変が必要。並行sealは `queue: max` で直列化されるが、GitHubのqueue上限（100）とrun保持に依存する。
+
 ## 部分失敗・再開・復旧
 
 | 停止点 | 現在の安全な対応 | 本番版で必要な永続状態 |
