@@ -25,7 +25,17 @@ GitHubからfresh cloneしたmainは `908a856aaed48fa0052bd0bcbe7e3fe1e367e5ac`�
 
 訂正metadataは存在するがcorrectionの認可契約は未実装。レビュー済みという宣言ではprotected-content変更を通さない。歴史的保守/訂正を可能にする契約は独立レビューで追加する。
 
-Pagesはmainのrunning workflowを後続pushでcancelしない。ただし現在のqueue指定なしconcurrencyはpending runの全保存/FIFOを保証しない。[GitHub concurrency仕様](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)にはqueue: maxもあるが、このPRは推奨されたcancel抑止の最小変更に留める。現在のexact merge SHA確認と、後続SHAの祖先包含＋同一receiptで確認する目標には未解決の衝突があり、containmentを暗黙には実装しない。公開receipt検証成功前のpublished通知は禁止。
+PR-1時点ではmainのrunning Pages workflowのcancelだけを抑止し、pending runは単一枠だった。現在のC3a契約は次節に従う。公開receipt検証成功前のpublished通知は禁止。
+
+## C3a Pages直列化・stale復旧deploy防止
+
+`pages.yml` のworkflow-level concurrencyは `group: pages-${{ github.ref }}` と `queue: max`。mainのbuild → deploy → edition/series receipt検証まで全体を直列化し、pending main pushを置換せず最大100件保持する。`cancel-in-progress` は指定しない。PRもrefごとにqueueする。[GitHub concurrency仕様](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)のFIFOはgroupで待機を始めた順であり、dispatch順の絶対保証ではない。通常A → B → Cのmain pushはA完了 → B完了 → C完了を期待する。上限超過分はcancelされ得るため無制限/永続queueではない。
+
+original main `push` の `run_attempt == 1` はqueue内でmainが進んでもdeployできる。push rerun（`run_attempt > 1`）と全 `workflow_dispatch` は [pages-deploy-fence.mjs](../scripts/pages-deploy-fence.mjs) が `actions/deploy-pages` 直前にGitHub APIからcurrent `refs/heads/main` tipをread-only取得し、`github.sha` と完全一致を要求する。stale SHA、取得不能、不正応答はdeploy前に非ゼロ終了する。main以外のmanual dispatchはbuild開始時に失敗し、deploy jobもmain限定。repository write権限は追加しない。
+
+mainが進んだ後の古いmain Pages runは、全job/失敗job/deploy jobのいずれも手動rerunしてはならない。stale rerun/manual dispatchはこのfenceを含むworkflowでdeploy前にblockedとなる。ただしGitHubのrerunは元runのworkflow定義を使うため、C3a導入前の古いrunにはfenceが遡及適用されない。復旧はcurrent mainのworkflowで行い、古いtreeを再deployしない。
+
+exact-SHA確認を引き続き正本とし、exact workflow/public receipt/HTMLが失敗・未確認ならfail-closedでpublishedにしない。mainが進んだ後の旧targetに後続SHAの成功を代用せず、記事再生成や古いdeploy rerunで回避しない。later-descendant containmentは別の将来architecture判断・独立レビューに留める。現在の `verify-deployment.mjs` はdeployed SHAの完全manifestと最新号HTMLを検証するため、後続SHAで最新号が変わる場合に旧targetの証明とするにはtarget HTML / fallback proof契約の別設計が必要。writer、deterministic merger、Scheduled Task publication、notifierは有効化しない。
 
 ### 次の人手GitHub設定（このPRでは変更しない）
 

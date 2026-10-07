@@ -161,6 +161,13 @@ test('local confirm and deploy verify exact same-date edition receipt and actual
   const run={id:1,head_sha:commit,head_branch:'main',event:'push',status:'completed',conclusion:'success',html_url:'https://github.com/hm2236/jamio-news/actions/runs/1'};
   const request=async url=>new Response(url.includes('api.github.com')?JSON.stringify({workflow_runs:[run]}):url.includes('publication.json')?JSON.stringify(manifest):html);
   assert.equal((await confirmPublication(root,slug,commit,{request})).variant,'evening');assert.equal((await verifyDeployment(root,commit,{request})).verifiedEdition.slug,slug);
+  // Even identical target HTML/digests on a later tree cannot prove this SHA.
+  const later='e'.repeat(40);manifest.commit=later;run.head_sha=later;
+  await assert.rejects(confirmPublication(root,slug,commit,{request}),/not succeeded/);
+  run.head_sha=commit;
+  await assert.rejects(confirmPublication(root,slug,commit,{request}),/manifest/);
+  await assert.rejects(verifyDeployment(root,commit,{request}),/stale or incomplete/);
+  manifest.commit=commit;
   manifest.editions.find(e=>e.slug===slug).variant='noon';await assert.rejects(confirmPublication(root,slug,commit,{request}));await assert.rejects(verifyDeployment(root,commit,{request}));
 });
 test('trusted full-tree guard validates same-day variant alongside actual legacy files',t=>{

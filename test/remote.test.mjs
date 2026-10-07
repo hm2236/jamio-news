@@ -104,7 +104,12 @@ test('remote can use trusted post-deploy logs when scheduled Web cannot retrieve
 
 test('exact-SHA confirmation rejects a later descendant until containment architecture is resolved',()=>{
  const f=proofFixture(),later='e'.repeat(40);
+ assert.equal(confirmRemotePublication(f.published).status,'published');
  f.published.mainRun.head_sha=later;f.published.manifest.commit=later;
  f.published.ancestry={base:mainSha,head:later,status:'ahead',merge_base_commit:{sha:mainSha}};
  assert.throws(()=>confirmRemotePublication(f.published),/merged main SHA/);
+ f.published.mainRun.head_sha=mainSha;
+ assert.throws(()=>confirmRemotePublication(f.published),/manifest/);
+ f.published.deploymentProof={status:'receipt-verified',...f.published.manifest,verifiedEdition:f.published.manifest.editions[0]};
+ assert.throws(()=>confirmRemotePublication(f.published),/stale or mismatched/);
 });
