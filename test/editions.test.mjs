@@ -144,7 +144,7 @@ function proof() {
   const repo={full_name:'hm2236/jamio-news'},identity=editionIdentity(slug),digest='d'.repeat(64),editionUrl=`https://hm2236.github.io/jamio-news/editions/${slug}/`;
   const pr={number:8,state:'open',base:{sha:base,ref:'main',repo},head:{sha:head,ref:`daily/${slug}`,repo}};
   const run=(workflow,event,sha,branch)=>({path:`.github/workflows/${workflow}`,event,head_sha:sha,head_branch:branch,status:'completed',conclusion:'success',html_url:'https://github.com/hm2236/jamio-news/actions/runs/1'});
-  const input={pr,expectedHead:head,expectedBase:base,latestMainSha:base,guardRun:{...run('daily-publication.yml','pull_request_target',base,'main'),pull_requests:[{number:8,head:{sha:head},base:{sha:base}}]},guardReceipt:{status:'guard-passed',contractVersion:1,pr:8,baseSha:base,headSha:head,...identity,editionUrl,digest},buildRun:run('pages.yml','pull_request',head,pr.head.ref)};
+  const input={pr,now:new Date('2026-10-05T23:59:00+09:00'),expectedHead:head,expectedBase:base,latestMainSha:base,guardRun:{...run('daily-publication.yml','pull_request_target',base,'main'),pull_requests:[{number:8,head:{sha:head},base:{sha:base}}]},guardReceipt:{sealSha:head,candidateMode:'single-commit',validatedAt:'2026-10-05T14:59:00Z',expiresAt:'2026-10-05T15:00:00Z',status:'guard-passed',contractVersion:1,pr:8,baseSha:base,headSha:head,...identity,editionUrl,digest},buildRun:run('pages.yml','pull_request',head,pr.head.ref)};
   const manifest={contractVersion:1,commit,editions:[{date,slug:date,variant:'legacy',url:`https://hm2236.github.io/jamio-news/editions/${date}/`,digest:'e'.repeat(64)},{...identity,url:editionUrl,digest}]};
   const published={validated:validateRemotePR(input),mergeResult:{merged:true,sha:commit},mergedPR:{...pr,merged:true,merge_commit_sha:commit},mainRun:run('pages.yml','push',commit,'main'),manifest,html:`<link rel="canonical" href="${editionUrl}"><meta name="jamio-edition-digest" content="${digest}">`};
   return {input,published};
@@ -169,6 +169,6 @@ test('trusted full-tree guard validates same-day variant alongside actual legacy
   // Drafts are deliberately excluded from the content-only candidate commit.
   git(['add','content']);git(['-c','user.name=Fixture','-c','user.email=fixture@example.test','commit','-m','Evening fixture']);const headSha=git(['rev-parse','HEAD']),repo={full_name:'hm2236/jamio-news'};
   const event={repository:repo,pull_request:{number:8,base:{sha:baseSha,ref:'main',repo},head:{sha:headSha,ref:`daily/${slug}`,repo}}};
-  const receipt=guardGitPR(root,event);assert.equal(receipt.slug,slug);assert.equal(receipt.variant,'evening');assert.equal(receipt.headSha,headSha);
-  fs.appendFileSync(path.join(root,`content/editions/${date}.md`),'\nChanged');event.pull_request.head.sha=saveCommit();assert.throws(()=>guardGitPR(root,event),/forbidden/);
+  const receipt=guardGitPR(root,event,{now:new Date('2026-10-05T23:59:00+09:00'),latestMainSha:event.pull_request.base.sha});assert.equal(receipt.slug,slug);assert.equal(receipt.variant,'evening');assert.equal(receipt.headSha,headSha);
+  fs.appendFileSync(path.join(root,`content/editions/${date}.md`),'\nChanged');event.pull_request.head.sha=saveCommit();assert.throws(()=>guardGitPR(root,event,{now:new Date('2026-10-05T23:59:00+09:00'),latestMainSha:event.pull_request.base.sha}),/forbidden/);
 });

@@ -10,13 +10,16 @@ function editionURLMatches(value, slug) {
 
 // Executable specification for the API-only handoff; scheduled ChatGPT evaluates
 // these same fields from GitHub JSON/logs. It does not need to run this module.
-export function validateRemotePR({pr, expectedHead, expectedBase, latestMainSha, guardRun, guardReceipt, buildRun}) {
+export function validateRemotePR({pr, expectedHead, expectedBase, latestMainSha, guardRun, guardReceipt, buildRun, now = new Date()}) {
   const identity = dailyIdentity(pr.head.ref), {date} = identity;
+  const clock = new Date(now).getTime(), validatedAt = Date.parse(guardReceipt?.validatedAt);
+  const expiresAt = Date.parse(date + 'T00:00:00+09:00') + 86400000;
+  if (!Number.isFinite(clock) || !Number.isFinite(validatedAt) || validatedAt > clock || new Date(clock + 9 * 3600000).toISOString().slice(0,10) !== date || new Date(validatedAt + 9 * 3600000).toISOString().slice(0,10) !== date || Date.parse(guardReceipt.expiresAt) !== expiresAt || clock >= expiresAt) throw new Error('Trusted validation receipt is expired, future or stale');
   if (!sha(expectedHead) || !sha(expectedBase) || pr.state !== 'open' || pr.base.ref !== 'main' || pr.head.sha !== expectedHead || pr.base.sha !== expectedBase || latestMainSha !== expectedBase || pr.head.repo.full_name !== pr.base.repo.full_name) throw new Error('PR head/base changed or is not a same-repository daily PR');
   const guardedPR = guardRun?.pull_requests?.find(item => item.number === pr.number);
-  if (!succeeded(guardRun, 'daily-publication.yml', 'pull_request_target') || ![expectedHead, expectedBase].includes(guardRun.head_sha) || guardedPR?.head?.sha !== expectedHead || guardedPR?.base?.sha !== expectedBase || guardReceipt.status !== 'guard-passed' || guardReceipt.contractVersion !== 1 || guardReceipt.pr !== pr.number || guardReceipt.headSha !== expectedHead || guardReceipt.baseSha !== expectedBase || !receiptIdentityMatches(guardReceipt, identity) || !editionURLMatches(guardReceipt.editionUrl, identity.slug) || !/^[a-f0-9]{64}$/.test(guardReceipt.digest)) throw new Error('Trusted guard did not validate this exact PR head/base');
+  if (!succeeded(guardRun, 'daily-publication.yml', 'pull_request_target') || ![expectedHead, expectedBase].includes(guardRun.head_sha) || guardedPR?.head?.sha !== expectedHead || guardedPR?.base?.sha !== expectedBase || guardReceipt.status !== 'guard-passed' || guardReceipt.contractVersion !== 1 || guardReceipt.pr !== pr.number || guardReceipt.headSha !== expectedHead || guardReceipt.sealSha !== expectedHead || !['single-commit','contents-v1'].includes(guardReceipt.candidateMode) || guardReceipt.baseSha !== expectedBase || !receiptIdentityMatches(guardReceipt, identity) || !editionURLMatches(guardReceipt.editionUrl, identity.slug) || !/^[a-f0-9]{64}$/.test(guardReceipt.digest)) throw new Error('Trusted guard did not validate this exact PR head/base');
   if (!succeeded(buildRun, 'pages.yml', 'pull_request') || buildRun.head_sha !== expectedHead || buildRun.head_branch !== pr.head.ref) throw new Error('Mandatory PR validation/test/build did not succeed for this exact head');
-  return {status: 'validated', pr: pr.number, ...identity, headSha: expectedHead, baseSha: expectedBase, editionUrl: guardReceipt.editionUrl, digest: guardReceipt.digest};
+  return {status: 'validated', pr: pr.number, ...identity, headSha: expectedHead, baseSha: expectedBase, editionUrl: guardReceipt.editionUrl, digest: guardReceipt.digest, validatedAt: guardReceipt.validatedAt, expiresAt: guardReceipt.expiresAt};
 }
 export function assertPublicReceipt(manifest, {commit, date, slug = date, variant, editionUrl, digest}, html) {
   const identity = editionIdentity(slug);
