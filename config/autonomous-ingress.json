@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "repository": "hm2236/jamio-news",
+  "issue": 37,
+  "actorId": 42599072,
+  "association": "OWNER",
+  "chunkMarker": "JAMIO_AUTONOMOUS_PACKAGE_CHUNK_V1",
+  "sealMarker": "JAMIO_AUTONOMOUS_PACKAGE_SEAL_V1",
+  "workflow": ".github/workflows/autonomous-package-ingress.yml",
+  "collectorWorkflow": ".github/workflows/autonomous-shadow.yml",
+  "limits": {
+    "comments": 28,
+    "parts": 4,
+    "partBytes": 24576,
+    "packageBytes": 262144,
+    "headerBytes": 8192,
+    "inboxPages": 20,
+    "artifactBytes": 16777216,
+    "reportBytes": 33554432
+  }
+}
