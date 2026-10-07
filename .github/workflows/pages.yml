@@ -8,11 +8,16 @@ permissions:
   contents: read
 concurrency:
   group: pages-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  queue: max
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Reject non-main manual deployment
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo 'Manual Pages deployment requires refs/heads/main' >&2
+          exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -47,10 +52,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/configure-pages@v5
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -58,6 +59,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/configure-pages@v5
+      - name: Fence stale Pages deployment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/pages-deploy-fence.mjs
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
       - name: Verify public deployment receipt
         run: node scripts/verify-deployment.mjs
       - name: Verify public series navigation receipt

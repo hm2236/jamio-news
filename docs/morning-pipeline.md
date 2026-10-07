@@ -90,11 +90,17 @@ PRでもmainでも、CIは `validate.mjs` → 全テスト → buildで契約を
 ## 再実行・訂正・失敗
 
 - 既存号と全記事・本文・観測が同一ならapplyは `unchanged`。JSONのキー順は比較に影響しません。記事や本文の相違、同じ版の観測追加/削除/変更は衝突として停止します。価格は既存履歴の順序を保って追記し、再送草稿も観測の順序を維持します。
-- 対象edition-slugの号がmainにあればinit/applyを繰り返さず、mainの公開確認・未配信通知だけ再開します。Pages失敗のために同じ号を再生成しません。後続mainのreceiptで元mergeを確認するcontainment案と現在のexact-SHA実装には未解決の衝突があります。digest一致だけで代用しません。
+- 対象edition-slugの号がmainにあればinit/applyを繰り返さず、exact-SHAの公開確認・未配信通知だけ再開します。Pages失敗のために同じ号を再生成しません。main前進後は古いmain Pages runを手動rerunせず、後続SHAのreceiptやdigest一致で代用しません。failed exact-SHA publicationはfail-closed、later-descendant containmentは独立レビューする将来判断です。
 - 訂正は通常の日刊候補と分離し、updated/corrections・出典・旧号保持を要します。ただし明示的なcorrection認可契約はまだ実装されていません。non-daily protected-content PRは現guardで拒否され、レビュー済みという自己申告でも通りません。歴史的保守/訂正は別の契約実装・独立レビューが必要です。
 - CLIの失敗は非ゼロ終了＋stderrの `{"status":"failed","error":"具体的な理由"}`。check=`valid`、apply=`applied/unchanged`、init=`draft` は公開成功を意味しません。調査不可・権限不足・CI失敗・公開未確認・通知失敗を停止地点とともに外部実行ログへ残します。
 
 ## 公開確認と最終URL
+
+Pages main workflowは `pages-${{ github.ref }}` / `queue: max` によりbuild → deploy → edition/series receipt検証まで直列化します。pending main pushは置換せず最大100件保持、PRもrefごとにqueueし、`cancel-in-progress` は指定しません。通常A → B → CのpushはA完了 → B完了 → C完了を期待します。[GitHubのFIFO](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)はgroup待機開始順でdispatch順の絶対保証ではなく、100件超過分はcancelされ得ます。
+
+original main push attempt 1はqueue内で継続可能です。push rerun（attempt > 1）と全manual `workflow_dispatch` はdeploy直前のread-only current main tip取得と `github.sha` 完全一致を要求し、stale/取得失敗/不正応答は `actions/deploy-pages` 前に失敗します。main以外のmanual refも拒否します。main前進後の古いPages runは手動rerun禁止です。C3a以前のrunは元workflowを使いfenceが遡及しないため、復旧にはcurrent mainのworkflowを使います。
+
+exact-SHAが公開確認の正本です。失敗・未確認はfail-closedでpublishedにせず、後続SHAの成功で旧targetを代用しません。later-descendant containmentは別の将来architecture判断です。現verifierはdeployed SHAの全manifestと最新号HTMLを証明するため、後続で最新号が変わる場合のtarget HTML / fallback proof契約を別途レビューする必要があります。
 
 buildは `dist/publication.json` にcommitと各号のdigestを生成し、各号HTMLにも同じdigestを埋め込みます。digestは号・参照記事・対象価格観測（旧形式は同日全体、明示版はpriceKeys）の内容から算出します。MarkdownのCRLF/LFとJSONのキー順を正規化するためWindowsとLinuxで一致します。CIでは `GITHUB_SHA`、ローカルではGit HEAD（Git情報がないプレビューはnull）を利用するため、ローカルbuildだけでデプロイを証明することはできません。
 
@@ -131,7 +137,7 @@ Webの予定タスクでは利用可能な接続ツールを使い、remote/sche
 
 ## remoteの検証済みheadと公開確認（Node不要）
 
-以下は人間/将来の独立mergerとverifierへの引渡し仕様で、ChatGPTへのmerge/通知有効化指示ではありません。現在はexact merge SHA確認を維持し、後続SHA containment案との衝突が未解決です。READMEとpublishing.schemaのx-handoffには旧remote運用の記述が残りますが、schema本体の編集契約は維持し、運用権限/候補履歴は本稿のPR-1制約に従います。
+以下は人間/将来の独立mergerとverifierへの引渡し仕様で、ChatGPTへのmerge/通知有効化指示ではありません。exact merge SHA確認を維持し、後続SHA containmentは別の将来判断です。READMEとpublishing.schemaのx-handoffには旧remote運用の記述が残りますが、schema本体の編集契約は維持し、運用権限/候補履歴は本稿のPR-1制約に従います。
 
 API確認の実行可能な仕様は [scripts/remote-proof.mjs](../scripts/remote-proof.mjs) とテストにあります。将来の独立merger/verifierは以下のJSONフィールドを照合し、ChatGPTはmergeせず、このファイルを実行する必要はありません。
 

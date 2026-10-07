@@ -93,5 +93,5 @@ test('workflows always guard PRs and consecutive main deployments preserve runni
   const guard=fs.readFileSync(new URL('../.github/workflows/daily-publication.yml',import.meta.url),'utf8');
   assert.ok(guard.includes('pull_request_target:'));assert.ok(guard.includes('ref: ${{ github.event.pull_request.base.sha }}'));assert.ok(guard.includes('git fetch origin main'));assert.equal(/if:.*startsWith/.test(guard),false);
   const pages=fs.readFileSync(new URL('../.github/workflows/pages.yml',import.meta.url),'utf8');
-  assert.ok(pages.includes("cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}"));assert.ok(pages.includes('group: pages-${{ github.ref }}'));
+  assert.ok(pages.includes('queue: max'));assert.equal(pages.includes('cancel-in-progress:'),false);assert.ok(pages.includes('group: pages-${{ github.ref }}'));
 });
