@@ -31,6 +31,12 @@ export function rejectionReceipt(error) {
 }
 const sealCandidate = body => typeof body === 'string' &&
   (body === inbox.sealMarker || body.startsWith(inbox.sealMarker+'\n') || body.startsWith(inbox.sealMarker+'\r\n'));
+function claimedAttempt(body, marker) {
+  if (typeof body !== 'string') return;
+  const [first,line] = body.split(/\r?\n/,2);
+  if (first !== marker) return;
+  try { return JSON.parse(line)?.attemptId; } catch { return; }
+}
 // Shadow artifacts are independent observations, with no winner or write authority.
 const validationPolicy = {version:1,attemptScope:'jst-date',replay:'independent-shadow-validation',
   multiAttempt:'independent-shadow-validation',selection:'none',exactlyOnce:false};
@@ -119,21 +125,16 @@ async function uniqueSeal(get, seal, sealId) {
   const comments = await readInbox(get,seal);
   const referenced = new Set(seal.chunkCommentIds);
   for (const comment of comments) {
-    if (comment.user?.id !== inbox.actorId || comment.author_association !== inbox.association ||
-        typeof comment.body !== 'string') continue;
-    const [marker,line] = comment.body.split(/\r?\n/,2);
-    if (marker !== inbox.chunkMarker) continue;
-    let claim;
-    try { claim = JSON.parse(line); } catch { continue; }
+    if (comment.user?.id !== inbox.actorId || comment.author_association !== inbox.association) continue;
     // Detect a claimed attempt even when its other header fields are invalid or edited.
-    if (claim?.attemptId === seal.attemptId && !referenced.has(String(comment.id)))
+    if (claimedAttempt(comment.body,inbox.chunkMarker) === seal.attemptId && !referenced.has(String(comment.id)))
       fail('Unreferenced chunk for attempt','unreferenced-attempt-chunk');
   }
-  // All well-formed authorized seals for the attempt are observable collisions,
-  // including edited ones. A deleted seal cannot provide a durable replay ledger.
+  // Any authorized seal candidate with a parseable attempt claim is a collision,
+  // including edited/invalid headers. Deleted comments are not a replay ledger.
   const matches = comments.filter(c=>{
     if (c.user?.id !== inbox.actorId || c.author_association !== inbox.association) return false;
-    try { return parseSeal(c.body).attemptId === seal.attemptId; } catch { return false; }
+    return claimedAttempt(c.body,inbox.sealMarker) === seal.attemptId;
   });
   if (matches.length !== 1 || String(matches[0].id) !== String(sealId)) fail('Multiple or missing seals for attempt');
 }
@@ -146,10 +147,10 @@ export async function collectorBinding(checkout, seal, {get=ingressJSON, now=()=
   const repository = loadRepository(checkout);
   const prior = repository.editions.filter(e=>e.kind==='daily' && Date.parse(e.published)<Date.parse(run.created_at))
     .sort((a,b)=>Date.parse(b.published)-Date.parse(a.published))[0];
-  const context = createContext({runId:run.id,attempt:run.run_attempt,createdAt:run.created_at,
-    baseSha:seal.baseSha,windowStart:prior?.published || jst(Date.parse(run.created_at)-86400000)});
+  const context = checked('stale-context','Collector context or lifetime rejected',()=>createContext({runId:run.id,attempt:run.run_attempt,createdAt:run.created_at,
+    baseSha:seal.baseSha,windowStart:prior?.published || jst(Date.parse(run.created_at)-86400000)}));
   if (context.date !== seal.date || context.slug !== seal.slug) fail('Collector date/slug mismatch');
-  fence(context,context,now());
+  checked('stale-context','Collector context or lifetime rejected',()=>fence(context,context,now()));
   return {run,context};
 }
 export async function selectCollectorArtifact(seal, binding, {get=ingressJSON}={}) {

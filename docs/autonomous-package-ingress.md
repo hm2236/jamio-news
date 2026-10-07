@@ -96,7 +96,7 @@ equal timestamps require a lower comment ID. Seal and chunks require created_at=
 which treats any edit recorded by GitHub as a permanent rejection. A seal must match the
 triggering event's body and relevant metadata. Refetched issue must be an issue, not a PR.
 
-Observable, authorized, well-formed multiple seals for the same attempt reject the attempt
+Observable, authorized seal candidates with a parseable JSON claim of the same attempt ID reject the attempt
 at both initial and final scans. A new attempt requires a new attempt ID and new comments.
 No automatic cleanup or partial resume is implemented.
 At both scans, any authorized chunk claiming the same attempt ID but absent from the seal's
@@ -203,7 +203,7 @@ replay=`independent-shadow-validation`, multiAttempt=`independent-shadow-validat
 selection=`none`, exactlyOnce=false. Replays and different attempts for one edition may
 each validate independently; none supersedes another or selects a publishable winner.
 Attempt IDs require fresh comments on their date; observable duplicate same-attempt seals
-in the active window reject. Deleted or untouched out-of-window history is not a replay
+in the active window reject, even when unrelated header fields are invalid. Deleted or untouched out-of-window history is not a replay
 ledger. A future writer must implement separately reviewed durable deduplication and selection.
 
 Job-level concurrency is entered only after the seal-candidate gate; chunk and unrelated

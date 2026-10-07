@@ -418,3 +418,20 @@ test('the final receipt timestamp itself is fenced at expiry',async t=>{
     assert.equal(rejectionReceipt(error).code,'stale-context');return true;
   });assert.equal(reads,6);
 });
+
+for(const phase of ['initial','final'])test(phase+' scan rejects a malformed competing same-attempt seal claim',async t=>{
+  const f=ingressFixture(t),add=()=>{
+    const c=f.metadata(100,inbox.sealMarker+'\r\n'+JSON.stringify({...f.seal,extra:true}));f.comments.set('100',c);
+  };
+  if(phase==='initial')add();
+  else f.hooks=(endpoint,count)=>{if(endpoint.startsWith('/issues/37/comments?')&&count===2)add();};
+  await assert.rejects(f.validate,/Multiple or missing seals/);
+});
+
+test('collector expiry has a sanitized stale-context diagnostic',async t=>{
+  const f=ingressFixture(t);f.clock=new Date('2026-10-07T08:00:01+09:00');
+  await assert.rejects(f.validate,error=>{
+    const receipt=rejectionReceipt(error);assert.equal(receipt.code,'stale-context');
+    assert.equal(receipt.reason,'Collector context or lifetime rejected');return true;
+  });
+});
