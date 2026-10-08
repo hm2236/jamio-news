@@ -105,17 +105,28 @@ test('trusted main rejects extra files, multi-commit packet branches and modifie
 });
 
 test('trusted main rejects payload/file identity differences and non regular packet mode',t=>{
+  // The negative probes must remain SINGLE-commit heads; otherwise only the
+  // multi-commit guard runs and their actual safety conditions go untested.
+  const reseal=f=>{
+    f.git(['reset','--soft',f.baseSha]);
+    f.event.pull_request.head.sha=f.commit('One-file malicious data candidate');
+  };
   const bad=fixture(t);
   bad.packet.baseSha='f'.repeat(40);
   bad.write(bad.file,JSON.stringify(bad.packet));
-  bad.event.pull_request.head.sha=bad.commit('Replaced packet with wrong base');
-  assert.throws(()=>validateTrustedPacketCommit(bad.root,bad.event),/one add-only commit/);
+  reseal(bad);
+  assert.throws(()=>validateTrustedPacketCommit(bad.root,bad.event),/identity\/base mismatch/);
 
   const badLink=fixture(t);
   badLink.git(['rm',badLink.file]);
   fs.symlinkSync('../site.config.json',path.join(badLink.root,badLink.file));
-  badLink.event.pull_request.head.sha=badLink.commit('Replaced packet with symlink');
-  assert.throws(()=>validateTrustedPacketCommit(badLink.root,badLink.event),/one add-only commit/);
+  reseal(badLink);
+  assert.throws(()=>validateTrustedPacketCommit(badLink.root,badLink.event),/regular file/);
+
+  const outside=fixture(t);
+  outside.write('scripts/untrusted.js','no execution is allowed\n');
+  reseal(outside);
+  assert.throws(()=>validateTrustedPacketCommit(outside.root,outside.event),/only one packet file/);
 });
 
 test('trusted preview discards all output if main advances during final collision check',async t=>{
