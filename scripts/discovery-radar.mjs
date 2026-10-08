@@ -3,24 +3,17 @@ import path from 'node:path';
 import https from 'node:https';
 import dns from 'node:dns/promises';
 import net from 'node:net';
-import {createHash} from 'node:crypto';
 import {brotliCompressSync, brotliDecompressSync, constants as zlibConstants} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
+import {canonical, digest, WINDOW, STATE_ENCODING, CONFIG_SNAPSHOT_BUDGET, LEGACY_SOURCE_CONFIG, LEGACY_CONTRACT_DIGEST, LEGACY_CONFIG_DIGEST, LEGACY_STATE_POLICY_DIGEST, compatibilityMetadata, validateEquivalence, validateBindings, migrateSources} from './discovery-radar-compatibility.mjs';
+export {canonical, digest};
 
 export const WORKFLOW = '.github/workflows/discovery-radar-shadow.yml';
 export const REPOSITORY = 'hm2236/jamio-news';
 export const ROLLING_BUDGET = 512 * 1024;
 export const CHECKPOINT_BUDGET = 256 * 1024;
-const WINDOW = 90 * 86400000;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fail = code => { throw new Error(code); };
-export function canonical(value) {
-  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
-  if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonical(value[k])).join(',') + '}';
-  if (value === undefined || typeof value === 'number' && !Number.isFinite(value)) fail('invalid-canonical-value');
-  return JSON.stringify(value);
-}
-export const digest = value => 'sha256:' + createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : canonical(value)).digest('hex');
 const iso = value => new Date(value).toISOString();
 const validTime = x => typeof x === 'string' && Number.isFinite(Date.parse(x));
 const hashPattern = /^sha256:[a-f0-9]{64}$/;
@@ -82,8 +75,9 @@ export function endpointAllowed(url, source) {
   if (source.id === 'hn-new') return u.hostname === 'hacker-news.firebaseio.com' && /^\/v0\/(?:newstories|item\/[1-9][0-9]*)\.json$/.test(u.pathname);
   return u.href === ({'kagoshima-new':'https://www.pref.kagoshima.jp/saishin/saishin.xml','anthropic-news':'https://www.anthropic.com/news'})[source.id];
 }
-export function validateSourceConfig(config) {
+export function validateSourceConfig(config, now = Infinity) {
   keys(config,['version','sources']);
+  if (Buffer.byteLength(canonical(config)) > CONFIG_SNAPSHOT_BUDGET) fail('source-config-size');
   if (config.version !== 1 || !Array.isArray(config.sources) || config.sources.length !== 3) fail('source-config');
   const reviewed = [
     ['hn-new','hn-item-v1','discover','aggregator',3600,262144,['application/json']],
@@ -94,8 +88,13 @@ export function validateSourceConfig(config) {
     const s = config.sources[i], [id,adapter,lane,channelClass,cadenceSeconds,maxBytes,contentTypes] = reviewed[i];
     keys(s,['id','adapter','lane','channelClass','cadenceSeconds','maxItems','endpoint','maxBytes','contentTypes','retentionClass','httpsEquivalence']);
     if (s.id !== id || s.adapter !== adapter || s.lane !== lane || s.channelClass !== channelClass || s.cadenceSeconds !== cadenceSeconds || s.maxBytes !== maxBytes || canonical(s.contentTypes) !== canonical(contentTypes) || s.retentionClass !== 'metadata-90d' || !Number.isInteger(s.maxItems) || s.maxItems < 1 || s.maxItems > (id === 'hn-new' ? 1 : 20) || !endpointAllowed(s.endpoint,s)) fail('source-config');
+    validateEquivalence(s);
+    if (s.httpsEquivalence?.some(proof => Date.parse(proof.verifiedAt) > now)) fail('equivalence-future');
   }
   return config;
+}
+export function createCompatibility(config, now = Infinity) {
+  return compatibilityMetadata(contract,validateSourceConfig(config,now));
 }
 export async function pinnedRequest(url, {addresses, headers = {}, timeoutMs = 8000, maxBytes, request = https.request}) {
   return new Promise((resolve, reject) => {
@@ -370,33 +369,50 @@ export function validateState(state, now) {
     if (!Array.isArray(row.seenAt) || !row.seenAt.length || row.seenAt[0] !== row.firstAt || row.seenAt.at(-1) !== row.lastAt || row.seenAt.some((at,i) => !validTime(at) || iso(at) !== at || Date.parse(at) > now || i && Date.parse(at) <= Date.parse(row.seenAt[i-1]))) fail('state-seen-times');
   }
   for (const [id,at] of Object.entries(state.sourceCursors)) if (!['hn-new','kagoshima-new','anthropic-news'].includes(id) || !validTime(at) || Date.parse(at) > now) fail('state-cursor');
+  validateBindings(state);
   if (!Array.isArray(state.seen) || canonical(state.seen) !== canonical(seenRecords(state))) fail('seen-ledger-mismatch');
   return state;
 }
 export function validateCandidate(manifest, stateBytes, candidate, compatibility, now) {
   validateContract(manifest,'manifest');
-  keys(manifest,['version','kind','repository','workflow','branch','producer','startedAt','completedAt','githubRetentionDays','retentionCapability','contractDigest','sourceConfigDigest','previousStateDigest','stateDigest','payloadDigest','stateEncoding','manifestDigest','imported','coldStart','health']);
+  keys(manifest,['version','kind','repository','workflow','branch','producer','startedAt','completedAt','githubRetentionDays','retentionCapability','contractDigest','sourceConfigDigest','previousStateDigest','stateDigest','payloadDigest','stateEncoding','manifestDigest','imported','coldStart','health',...(manifest.version === 2 ? ['statePolicyDigest','sourceConfig'] : [])]);
   const {manifestDigest, ...unsigned} = manifest;
   if (manifestDigest !== digest(unsigned)) fail('manifest-digest');
   const run = candidate.run;
-  if (manifest.version !== 1 || manifest.kind !== candidate.kind || manifest.repository !== REPOSITORY || manifest.workflow !== WORKFLOW || manifest.branch !== 'main' || run.repository?.full_name !== REPOSITORY || run.path !== WORKFLOW || run.head_branch !== 'main' || run.status !== 'completed' || run.conclusion !== 'success') fail('provenance');
+  if (![1,2].includes(manifest.version) || manifest.kind !== candidate.kind || manifest.repository !== REPOSITORY || manifest.workflow !== WORKFLOW || manifest.branch !== 'main' || run.repository?.full_name !== REPOSITORY || run.path !== WORKFLOW || run.head_branch !== 'main' || run.status !== 'completed' || run.conclusion !== 'success') fail('provenance');
   keys(manifest.producer,['runId','attempt','headSha']);
   if (manifest.producer.runId !== String(run.id) || manifest.producer.attempt !== run.run_attempt || manifest.producer.headSha !== run.head_sha || candidate.runId !== String(run.id) || candidate.attempt !== run.run_attempt || !/^[a-f0-9]{40}$/.test(run.head_sha)) fail('run-binding');
   if (!validTime(manifest.startedAt) || !validTime(manifest.completedAt) || Date.parse(manifest.completedAt) > now || Date.parse(manifest.startedAt) > Date.parse(manifest.completedAt)) fail('manifest-time');
-  if (manifest.contractDigest !== compatibility.contractDigest || manifest.sourceConfigDigest !== compatibility.sourceConfigDigest) fail('compatibility');
+  if (manifest.coldStart !== (manifest.imported === null) || manifest.previousStateDigest !== (manifest.imported?.stateDigest ?? null)) fail('state-chain');
+  if (manifest.imported?.runId === manifest.producer.runId) fail('state-chain');
+  const current = createCompatibility(compatibility.sourceConfig,now);
+  if (canonical(current) !== canonical(compatibility)) fail('consumer-compatibility');
+  if (manifest.version === 1) {
+    if (manifest.contractDigest !== LEGACY_CONTRACT_DIGEST || manifest.sourceConfigDigest !== LEGACY_CONFIG_DIGEST || current.statePolicyDigest !== LEGACY_STATE_POLICY_DIGEST) fail('legacy-compatibility');
+  } else {
+    if (manifest.contractDigest !== current.contractDigest || manifest.statePolicyDigest !== current.statePolicyDigest) fail('compatibility');
+    validateSourceConfig(manifest.sourceConfig);
+    if (manifest.sourceConfigDigest !== digest(manifest.sourceConfig)) fail('source-snapshot-digest');
+  }
+  const previousConfig = manifest.version === 1 ? LEGACY_SOURCE_CONFIG : manifest.sourceConfig;
+  for (const config of [previousConfig,current.sourceConfig]) for (const source of config.sources) if (source.httpsEquivalence?.some(proof => Date.parse(proof.verifiedAt) > now)) fail('equivalence-future');
   if (manifest.payloadDigest !== digest(stateBytes)) fail('payload-digest');
-  let state; try { state = JSON.parse(brotliDecompressSync(stateBytes,{maxOutputLength:8*1024*1024}).toString('utf8')); } catch { fail('state-decode'); }
+  let state; try { state = JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(brotliDecompressSync(stateBytes,{maxOutputLength:8*1024*1024}))); } catch { fail('state-decode'); }
   if (manifest.stateDigest !== digest(state)) fail('state-digest');
-  return validateState(state,now);
+  return validateState(state,Date.parse(manifest.completedAt));
 }
 export function recoverState(candidates, compatibility, now) {
+  // Invalid current policy is a run failure, never a reason to silently continue with empty history.
+  if (canonical(createCompatibility(compatibility.sourceConfig,now)) !== canonical(compatibility)) fail('consumer-compatibility');
   const failures = [];
   for (const kind of ['rolling','checkpoint']) {
     const c = candidates[kind]; if (!c) continue;
     try {
       if (c.downloadFailed) fail('download-failed');
       const state = validateCandidate(c.manifest,c.stateBytes,c,compatibility,now);
-      return {state,imported:{artifactId:c.artifactId,runId:c.runId,attempt:c.attempt,kind,stateDigest:c.manifest.stateDigest},seenState:kind === 'rolling' ? 'ok' : 'recovered-gap',failures};
+      const migrations = migrateSources(state,c.manifest.version === 1 ? LEGACY_SOURCE_CONFIG : c.manifest.sourceConfig,compatibility.sourceConfig,seenRecords);
+      validateState(state,now);
+      return {state,imported:{artifactId:c.artifactId,runId:c.runId,attempt:c.attempt,kind,stateDigest:c.manifest.stateDigest},seenState:kind === 'rolling' ? 'ok' : 'recovered-gap',failures,migrations};
     } catch(e) { failures.push({kind,code:safeCode(e)}); }
   }
   return {state:emptyState(),imported:null,seenState:'cold-start',failures};
@@ -501,13 +517,15 @@ export function payloadBytes(files, budget) { const bytes = Object.values(files)
 export function packageCapture(result, recovery, plan, binding, compatibility, githubRetentionDays) {
   const capability = githubRetentionDays >= 90 ? 'ok' : 'degraded';
   const stateBytes = brotliCompressSync(Buffer.from(canonical(result.state)+'\n'),{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:5}});
-  const health = recovery.seenState !== 'ok' || recovery.failures.length || result.sourceHealth.some(x => x.status === 'error') ? 'degraded' : 'ok';
-  const common = {version:1,repository:REPOSITORY,workflow:WORKFLOW,branch:'main',producer:{runId:String(binding.id),attempt:binding.run_attempt,headSha:binding.head_sha},startedAt:binding.startedAt,completedAt:binding.completedAt,githubRetentionDays,retentionCapability:capability,...compatibility,previousStateDigest:recovery.imported?.stateDigest || null,stateDigest:digest(result.state),payloadDigest:digest(stateBytes),stateEncoding:'brotli-canonical-json-v1',imported:recovery.imported,coldStart:!recovery.imported,health};
+  const health = recovery.seenState !== 'ok' || recovery.failures.length || recovery.migrations?.length || result.sourceHealth.some(x => x.status === 'error') ? 'degraded' : 'ok';
+  if (canonical(createCompatibility(compatibility.sourceConfig,Date.parse(binding.completedAt))) !== canonical(compatibility)) fail('consumer-compatibility');
+  const common = {version:2,repository:REPOSITORY,workflow:WORKFLOW,branch:'main',producer:{runId:String(binding.id),attempt:binding.run_attempt,headSha:binding.head_sha},startedAt:binding.startedAt,completedAt:binding.completedAt,githubRetentionDays,retentionCapability:capability,...compatibility,previousStateDigest:recovery.imported?.stateDigest || null,stateDigest:digest(result.state),payloadDigest:digest(stateBytes),stateEncoding:STATE_ENCODING,imported:recovery.imported,coldStart:!recovery.imported,health};
   const manifest = kind => { const m = {...common,kind}; return validateContract({...m,manifestDigest:digest(m)},'manifest'); };
   const slot = scheduledSlot(binding.created_at,binding.event);
   const checkpointDate = jstDate(binding.completedAt);
   const existingCheckpoint = plan.targetDate && plan.targetDate !== checkpointDate ? false : plan.existingCheckpoint;
   const report = {version:1,publicationAuthorized:false,run:{runId:String(binding.id),attempt:binding.run_attempt,headSha:binding.head_sha,startedAt:binding.startedAt,completedAt:binding.completedAt,runCreatedAt:binding.created_at,event:binding.event,scheduledSlotAt:slot,scheduleDelaySeconds:slot ? Math.max(0,(Date.parse(binding.startedAt)-Date.parse(slot))/1000) : null,scheduleDelayMethod:slot ? 'latest-hourly-17-slot-before-run-creation' : 'not-scheduled'},health,seenState:recovery.seenState,importedState:recovery.imported,sourceHealth:result.sourceHealth,newObservationCount:result.newObservationCount,duplicateObservationCount:result.duplicateObservationCount,perLaneCounts:result.perLaneCounts,newlySeenIdentifiers:result.newlySeenIdentifiers,failures:recovery.failures,artifactBytes:{rolling:0,checkpoint:0},requestCounts:{actions:plan.apiRequests || 0,sources:binding.sourceRequests},responseBytes:binding.responseBytes,githubRetentionDays,retentionCapability:capability,checkpoint:{date:checkpointDate,existingSuccessful:existingCheckpoint,uploadPlanned:!existingCheckpoint,retentionDays:Math.min(90,githubRetentionDays)},rawSourceBodyPersistedBytes:0};
+  report.stateMigrations = recovery.migrations || [];
   const json = v => canonical(v)+'\n';
   const checkpoint = {'manifest.json':json(manifest('checkpoint')),'state/seen.json.br':stateBytes};
   report.artifactBytes.checkpoint = payloadBytes(checkpoint,CHECKPOINT_BUDGET);
@@ -544,8 +562,7 @@ async function main(command,env = process.env) {
   if (command !== 'capture') fail('unknown-command');
   const plan = JSON.parse(fs.readFileSync(path.join(base,'plan.json'),'utf8'));
   const config = validateSourceConfig(JSON.parse(fs.readFileSync(path.join(root,'config/discovery-radar-sources.json'),'utf8')));
-  const contract = JSON.parse(fs.readFileSync(path.join(root,'contracts/discovery-radar.schema.json'),'utf8'));
-  const compatibility = {contractDigest:digest(contract),sourceConfigDigest:digest(config)};
+  const compatibility = createCompatibility(config,Date.now());
   const candidates = {};
   for (const kind of ['rolling','checkpoint']) if (plan[kind]) {
     try {

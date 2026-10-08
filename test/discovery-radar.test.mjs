@@ -6,10 +6,11 @@ import os from 'node:os';
 import {brotliCompressSync,brotliDecompressSync,constants} from 'node:zlib';
 import {EventEmitter} from 'node:events';
 import {canonical,digest,publicAddress,endpointAllowed,validateSourceConfig,pinnedRequest,createSourceFetcher,sourceTime,hnRecord,parseXml,feedRecords,htmlRecords,observation,emptyState,updateSeen,seenRecords,compactState,validateState,validateCandidate,recoverState,capture,planRecovery,packageCapture,payloadBytes,scheduledSlot,jstDate,validateContract,outputBase,WORKFLOW,REPOSITORY,ROLLING_BUDGET,CHECKPOINT_BUDGET} from '../scripts/discovery-radar.mjs';
+import {createCompatibility} from '../scripts/discovery-radar.mjs';
 const config = JSON.parse(fs.readFileSync(new URL('../config/discovery-radar-sources.json',import.meta.url),'utf8'));
 const [hn,rss,html] = config.sources;
-const at = '2026-10-06T12:17:00.000Z', later = '2026-10-06T12:17:01.000Z', now = Date.parse(later);
-const compatibility = {contractDigest:digest('contract-fixture'),sourceConfigDigest:digest('config-fixture')};
+const at = '2026-10-06T14:17:00.000Z', later = '2026-10-06T14:17:01.000Z', now = Date.parse(later);
+const compatibility = createCompatibility(config);
 const item = (id=123,title='Fixture title') => ({id,type:'story',by:'fixture',time:1791289000,title,url:'https://untrusted.invalid/story',text:'ephemeral text',score:10,descendants:2});
 const obs = (id=123,title='Fixture title',time=at,source=hn) => observation(hnRecord(item(id,title),id).record,source,time,time);
 const atom = '<feed xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://purl.org/dc/elements/1.1/"><entry><d:id>stable-1</d:id><title><![CDATA[Fixture & text]]></title><d:link href="/test.html"/><d:date>2026-10-06</d:date><summary>A &amp; B &#x65E5;</summary></entry></feed>';
@@ -21,7 +22,7 @@ function candidate(kind='rolling',id=10) {
   const state = emptyState(); updateSeen(state,[obs()],now);
   const stateBytes = brotliCompressSync(canonical(state)+'\n');
   const r = run(id);
-  const m = {version:1,kind,repository:REPOSITORY,workflow:WORKFLOW,branch:'main',producer:{runId:String(id),attempt:1,headSha:r.head_sha},startedAt:at,completedAt:later,githubRetentionDays:90,retentionCapability:'ok',...compatibility,previousStateDigest:null,stateDigest:digest(state),payloadDigest:digest(stateBytes),stateEncoding:'brotli-canonical-json-v1',imported:null,coldStart:true,health:'degraded'};
+  const m = {version:2,kind,repository:REPOSITORY,workflow:WORKFLOW,branch:'main',producer:{runId:String(id),attempt:1,headSha:r.head_sha},startedAt:at,completedAt:later,githubRetentionDays:90,retentionCapability:'ok',...compatibility,previousStateDigest:null,stateDigest:digest(state),payloadDigest:digest(stateBytes),stateEncoding:'brotli-canonical-json-v1',imported:null,coldStart:true,health:'degraded'};
   return {kind,artifactId:id+100,runId:String(id),attempt:1,run:r,manifest:{...m,manifestDigest:digest(m)},stateBytes};
 }
 function resign(c) { const {manifestDigest,...m} = c.manifest; c.manifest.manifestDigest=digest(m); }
@@ -226,6 +227,9 @@ for (const [name,mutate] of [
 ]) test(`prior import rejects ${name}`,()=>{const c=candidate();mutate(c);assert.throws(()=>validateCandidate(c.manifest,c.stateBytes,c,compatibility,now));});
 test('main advancing alone does not invalidate compatible state; checkpoint can be 89 days old',()=>{
   const c=candidate('checkpoint'); c.run.created_at=isoOld();c.manifest.startedAt=c.run.created_at;c.manifest.completedAt=c.run.created_at;resign(c);
+  const oldState=JSON.parse(brotliDecompressSync(c.stateBytes).toString('utf8'));
+  for (const row of Object.values(oldState.observations)) { row.firstAt=isoOld();row.lastAt=isoOld();row.seenAt=[isoOld()]; }
+  oldState.seen=seenRecords(oldState);c.stateBytes=brotliCompressSync(canonical(oldState)+'\n');c.manifest.payloadDigest=digest(c.stateBytes);c.manifest.stateDigest=digest(oldState);resign(c);
   assert.equal(recoverState({checkpoint:c},compatibility,now).seenState,'recovered-gap'); assert.equal(c.run.head_sha,'a'.repeat(40));
   // The consumer's current SHA is intentionally not a compatibility key.
   const report=packageCapture(resultFixture(),{state:emptyState(),imported:null,seenState:'cold-start',failures:[]},{existingCheckpoint:false},{...run(20,{head_sha:'b'.repeat(40)}),startedAt:at,completedAt:later,sourceRequests:0,responseBytes:0},compatibility,90).report;
@@ -260,12 +264,12 @@ test('artifact hard budgets use local bytes and checkpoint contains compact stat
 });
 const artifact = (kind,id,attempt=1,date='2026-10-06',created=at) => ({id:id+100,expired:false,created_at:created,workflow_run:{id},name:kind==='rolling'?`radar-shadow-${id}-${attempt}`:`radar-daily-checkpoint-${date}-${id}-${attempt}`});
 test('Actions selection checks successful provenance and deterministically selects only two download candidates',async()=>{
-  const current=run(20,{created_at:'2026-10-06T13:17:00Z'}),prior=run(10),checkpointRun=run(9);
+  const current=run(20,{created_at:'2026-10-06T14:18:00Z'}),prior=run(10),checkpointRun=run(9);
   const queried=[]; const api=async route=>{queried.push(route);if(route.includes('/workflows/'))return {workflow_runs:[current,prior]};if(route.includes('/10/artifacts'))return {total_count:1,artifacts:[artifact('rolling',10)]};if(route.startsWith('/actions/artifacts'))return {artifacts:[artifact('checkpoint',9),artifact('checkpoint',8,1,'2026-10-05')]};if(route==='/actions/runs/9')return checkpointRun;throw Error(route);};
   const p=await planRecovery(api,current);assert.equal(p.rolling.runId,'10');assert.equal(p.checkpoint.runId,'9');assert.equal(p.existingCheckpoint,true);assert.ok(!queried.includes('/actions/runs/8'));
 });
 test('latest successful rolling missing does not search older rolling; failed checkpoints cannot suppress upload',async()=>{
-  const current=run(20,{created_at:'2026-10-06T13:17:00Z'});
+  const current=run(20,{created_at:'2026-10-06T14:18:00Z'});
   const api=async route=>route.includes('/workflows/')?{workflow_runs:[run(10),run(8)]}:route.includes('/10/artifacts')?{artifacts:[],total_count:0}:route.startsWith('/actions/artifacts')?{artifacts:[artifact('checkpoint',9),artifact('checkpoint',7,1,'2026-10-05')]}:route.endsWith('/9')?run(9,{conclusion:'failure'}):run(7,{created_at:'2026-10-05T12:17:00Z'});
   const p=await planRecovery(api,current);assert.equal(p.rolling,null);assert.equal(p.checkpoint.runId,'7');assert.equal(p.existingCheckpoint,false);
 });

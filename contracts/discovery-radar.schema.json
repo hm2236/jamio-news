@@ -381,125 +381,14 @@
       }
     },
     "manifest": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "version",
-        "kind",
-        "repository",
-        "workflow",
-        "branch",
-        "producer",
-        "startedAt",
-        "completedAt",
-        "githubRetentionDays",
-        "retentionCapability",
-        "contractDigest",
-        "sourceConfigDigest",
-        "previousStateDigest",
-        "stateDigest",
-        "payloadDigest",
-        "stateEncoding",
-        "manifestDigest",
-        "imported",
-        "coldStart",
-        "health"
-      ],
-      "properties": {
-        "version": {
-          "const": 1
+      "anyOf": [
+        {
+          "$ref": "#/$defs/legacyManifest"
         },
-        "kind": {
-          "enum": [
-            "rolling",
-            "checkpoint"
-          ]
-        },
-        "repository": {
-          "const": "hm2236/jamio-news"
-        },
-        "workflow": {
-          "const": ".github/workflows/discovery-radar-shadow.yml"
-        },
-        "branch": {
-          "const": "main"
-        },
-        "producer": {
-          "$ref": "#/$defs/producer"
-        },
-        "startedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "completedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "githubRetentionDays": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 90
-        },
-        "retentionCapability": {
-          "enum": [
-            "ok",
-            "degraded"
-          ]
-        },
-        "contractDigest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "sourceConfigDigest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "previousStateDigest": {
-          "anyOf": [
-            {
-              "type": "string",
-              "pattern": "^sha256:[a-f0-9]{64}$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "stateDigest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "payloadDigest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "stateEncoding": {
-          "const": "brotli-canonical-json-v1"
-        },
-        "manifestDigest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "imported": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/imported"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "coldStart": {
-          "type": "boolean"
-        },
-        "health": {
-          "enum": [
-            "ok",
-            "degraded"
-          ]
+        {
+          "$ref": "#/$defs/manifestV2"
         }
-      }
+      ]
     },
     "sourceHealth": {
       "type": "object",
@@ -570,7 +459,8 @@
         "githubRetentionDays",
         "retentionCapability",
         "checkpoint",
-        "rawSourceBodyPersistedBytes"
+        "rawSourceBodyPersistedBytes",
+        "stateMigrations"
       ],
       "properties": {
         "version": {
@@ -828,6 +718,302 @@
         },
         "rawSourceBodyPersistedBytes": {
           "const": 0
+        },
+        "stateMigrations": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceId",
+              "action"
+            ],
+            "properties": {
+              "sourceId": {
+                "enum": [
+                  "hn-new",
+                  "kagoshima-new",
+                  "anthropic-news"
+                ]
+              },
+              "action": {
+                "enum": [
+                  "preserved-ledger-cleared-cursor",
+                  "reset-source"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "legacyManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "kind",
+        "repository",
+        "workflow",
+        "branch",
+        "producer",
+        "startedAt",
+        "completedAt",
+        "githubRetentionDays",
+        "retentionCapability",
+        "contractDigest",
+        "sourceConfigDigest",
+        "previousStateDigest",
+        "stateDigest",
+        "payloadDigest",
+        "stateEncoding",
+        "manifestDigest",
+        "imported",
+        "coldStart",
+        "health"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "enum": [
+            "rolling",
+            "checkpoint"
+          ]
+        },
+        "repository": {
+          "const": "hm2236/jamio-news"
+        },
+        "workflow": {
+          "const": ".github/workflows/discovery-radar-shadow.yml"
+        },
+        "branch": {
+          "const": "main"
+        },
+        "producer": {
+          "$ref": "#/$defs/producer"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "githubRetentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "retentionCapability": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "contractDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sourceConfigDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "previousStateDigest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stateDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "payloadDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "stateEncoding": {
+          "const": "brotli-canonical-json-v1"
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "imported": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/imported"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coldStart": {
+          "type": "boolean"
+        },
+        "health": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        }
+      }
+    },
+    "manifestV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "kind",
+        "repository",
+        "workflow",
+        "branch",
+        "producer",
+        "startedAt",
+        "completedAt",
+        "githubRetentionDays",
+        "retentionCapability",
+        "contractDigest",
+        "sourceConfigDigest",
+        "previousStateDigest",
+        "stateDigest",
+        "payloadDigest",
+        "stateEncoding",
+        "manifestDigest",
+        "imported",
+        "coldStart",
+        "health",
+        "statePolicyDigest",
+        "sourceConfig"
+      ],
+      "properties": {
+        "version": {
+          "const": 2
+        },
+        "kind": {
+          "enum": [
+            "rolling",
+            "checkpoint"
+          ]
+        },
+        "repository": {
+          "const": "hm2236/jamio-news"
+        },
+        "workflow": {
+          "const": ".github/workflows/discovery-radar-shadow.yml"
+        },
+        "branch": {
+          "const": "main"
+        },
+        "producer": {
+          "$ref": "#/$defs/producer"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "githubRetentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "retentionCapability": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "contractDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sourceConfigDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "previousStateDigest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stateDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "payloadDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "stateEncoding": {
+          "const": "brotli-canonical-json-v1"
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "imported": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/imported"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coldStart": {
+          "type": "boolean"
+        },
+        "health": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "statePolicyDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sourceConfig": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "sources"
+          ],
+          "properties": {
+            "version": {
+              "const": 1
+            },
+            "sources": {
+              "type": "array",
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "maxProperties": 11
+              }
+            }
+          }
         }
       }
     }
