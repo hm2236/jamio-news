@@ -139,7 +139,7 @@ test('trusted main rejects payload/file identity differences and non regular pac
   const symlinkBlob=execFileSync('git',['hash-object','-w','--stdin'],{
     cwd:badLink.root,encoding:'utf8',input:'../site.config.json'
   }).trim();
-  badLink.git(['update-index','--add','--cacheinfo','120000,'+symlinkBlob+',''+badLink.file]);
+  badLink.git(['update-index','--add','--cacheinfo','120000,'+symlinkBlob+','+badLink.file]);
   badLink.git(['reset','--soft',badLink.baseSha]);
   badLink.git(['-c','user.name=Fixture','-c','user.email=fixture@example.test',
     'commit','-m','One-file git-index symlink candidate']);
