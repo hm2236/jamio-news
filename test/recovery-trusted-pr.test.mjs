@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {validateTrustedPacketCommit, trustedPreview} from '../scripts/recovery-trusted-pr.mjs';
+import {validateTrustedPacketCommit, trustedPreview, classifyTrustedPreviewFailure} from '../scripts/recovery-trusted-pr.mjs';
 
 const source = fileURLToPath(new URL('../', import.meta.url));
 const day = '2026-10-09', slug = day + '-evening';
@@ -199,4 +199,36 @@ test('trusted preview fails closed on daily branch collision',async t=>{
   };
   await assert.rejects(trustedPreview(f.root,f.event,f.output,{...f.options,request,now}),/daily branch/);
   assert.equal(fs.existsSync(f.output),false);
+});
+
+test('trusted workflow stays pinned to main, signs HTML/receipt and never checks out PR code',()=>{
+  const y=fs.readFileSync(path.join(source,'.github/workflows/trusted-recovery-preview.yml'),'utf8');
+  assert.match(y,/pull_request_target:/);
+  assert.match(y,/pull-requests: read/);
+  assert.match(y,/contents: read/);
+  assert.match(y,/id-token: write/);
+  assert.match(y,/attestations: write/);
+  assert.match(y,/artifact-metadata: write/);
+  assert.match(y,/persist-credentials: false/);
+  assert.match(y,/base\.sha == github\.sha/);
+  assert.match(y,/subject-path:[\s\S]*offline-review\.html[\s\S]*trusted-preview\.json/);
+  assert.match(y,/uses: actions\/attest@[a-f0-9]{40}/);
+  assert.doesNotMatch(y,/ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha/);
+  assert.doesNotMatch(y,/actions\/checkout@v\d/);
+  assert.doesNotMatch(y,/run:\s*[^\n]*\$\{\{\s*github\.event\.pull_request\.head/);
+});
+
+test('trusted preview incident reason codes never echo untrusted content',()=>{
+  const cases=[
+    [new Error('Trusted workflow identity mismatch'),'workflow-identity'],
+    [new Error('Trusted read-only GitHub API token unavailable'),'auth-unavailable'],
+    [new Error('Main changed after preview event'),'stale-main'],
+    [new Error('Recovery PR identity changed after preview event'),'pr-moved'],
+    [new Error('Another daily branch already exists'),'daily-collision'],
+    [new Error('Stale date JST rollover'),'jst-clock'],
+    [new Error('Trusted live GitHub API check unavailable'),'api-unavailable'],
+    [new Error('Trusted preview packet must be a regular file'),'packet-rejected'],
+    [new Error('unexpected payload https://secret.example/key?token=secret'),'preview-rejected']
+  ];
+  for(const [error,expected] of cases)assert.equal(classifyTrustedPreviewFailure(error),expected);
 });
