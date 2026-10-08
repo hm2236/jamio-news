@@ -43,6 +43,7 @@ export function validateDailyChange(branch, changes, base, candidate) {
 export function guardInfrastructurePaths(changes) {
   for (const {file} of changes) {
     if (file === 'content' || file.startsWith('content/') || file === 'data/prices.json') throw new Error('Non-daily PR changes protected publication data: ' + file + '; correction mode is not implemented');
+    if (file === 'recovery-packets' || file.startsWith('recovery-packets/')) throw new Error('Non-daily PR changes ephemeral recovery packet: ' + file + '; rehearsal packets must never merge into main');
   }
 }
 export function validateFreshness(branch, edition, articles, now = new Date()) {
