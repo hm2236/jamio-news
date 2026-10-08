@@ -43,7 +43,7 @@ packet名: `recovery-packets/YYYY-MM-DD-morning.json` または `recovery-packet
 - 使う実行コード・schema・rendererは**exact protected main**からのみcheckoutし、PR headのcode/workflow/actionをcheckoutも実行もしない。同一repo/`main`へのopen recovery PR限定。fork、別base、stale/main headや失効日付は拒否。
 - headは`git show <exact-head>:<packet>` の単一JSON**データ**として読む。baseから単一親commit・新規packet1ファイルのみ・100644・サイズ上限・base/slug一致を確認。コード変更/複数commit/rename/symlink/削除は禁止。
 - 書き込み不能の`contents: read`と`pull-requests: read`の`GITHUB_TOKEN`をAPI読み取りに使用。`persist-credentials:false`、秘密やPR提供コードを一切実行しない。OIDC署名に限定した`id-token:write`、`attestations:write`、`artifact-metadata:write`は**記事・mainへの書き込み許可ではない**。
-- main/current PR/daily branch・PRのライブ照合を**生成前後**に実施。最終JST日付・main前進・競合・403/404以外のHTTP/タイムアウトを含めfail-closed。出力を残す前にsource snapshotを再照合する。
+- main/current PR/daily branch・PRと、同じslugの他のopen recovery packet PRのライブ照合を**生成前後**に実施。リストが100件に達して完全性が保証できない場合やAPI失敗時はfail-closed。最終JST日付・main前進・競合・403/404以外のHTTP/タイムアウトを含めfail-closed。出力を残す前にsource snapshotを再照合する。
 - scratchにだけ`planDraft`→`applyDraft`→`validateDailyChange`→`build`を行い、ソースcheckoutのtrackedファイルは変更しない。既刊digest/候補ファイル/slug/記事数を検証する。
 - 成功時に`trusted-unpublished-review-<run>-<attempt>` artifactの`offline-review.html`、`offline-review.json`、`preview.json`、`candidate-files.json`、`site/`、`trusted-preview.json`を生成。`trusted-preview.json`にはrun ID/attempt、workflow ref/SHA、event、base/head SHA、packet/HTML digest、作成時刻/有効期限、`publicationAuthorized:false`を記録する。
 - **GitHub ActionsによるOIDC署名Artifact Attestation**が紙面HTMLと`trusted-preview.json`のハッシュに対して**成功した場合のみ**artifactをアップロード。署名手順が失敗したら受入不可。
