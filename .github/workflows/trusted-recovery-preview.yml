@@ -1,0 +1,39 @@
+name: Trusted recovery preview (unpublished)
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'recovery-packets/**'
+permissions:
+  contents: read
+concurrency:
+  group: trusted-recovery-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  trusted-recovery-preview:
+    # No forks, no PR-supplied commands, no write permission, no deployment.
+    if: github.repository == 'hm2236/jamio-news' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # pull_request_target workflow AND scripts run exclusively from trusted main.
+      # Candidate blobs are read with git show after exact-diff/parent/mode checks.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Render packet from exact head as untrusted data using trusted main
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/trusted-unpublished-review
+        run: node scripts/recovery-trusted-pr.mjs "$OUTPUT_DIR"
+      - name: Retain trusted unpublished newspaper for editorial review
+        uses: actions/upload-artifact@v4
+        with:
+          name: trusted-unpublished-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/trusted-unpublished-review/
+          retention-days: 7
+          if-no-files-found: error
