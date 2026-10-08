@@ -1,4 +1,4 @@
-name: Recovery preview (no publication)
+name: Recovery implementation checks (not publication)
 on:
   pull_request:
     paths:
@@ -8,7 +8,6 @@ on:
       - 'scripts/recovery-status.mjs'
       - 'test/recovery-preview.test.mjs'
       - 'docs/operations-recovery.md'
-      - 'recovery-packets/**'
 permissions:
   contents: read
 concurrency:
@@ -54,6 +53,8 @@ jobs:
           import fs from 'node:fs';
           import path from 'node:path';
           import {execFileSync} from 'node:child_process';
+          // Legacy compatibility for PR #46 smoke tests; real packet-only PRs
+          // must be handled by trusted-recovery-preview.yml on main.
           const directory = '../tooling/recovery-packets';
           if (!fs.existsSync(directory)) {
             console.log('No editorial packet supplied; only synthetic rehearsal and read-only live status were executed.');
