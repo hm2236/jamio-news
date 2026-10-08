@@ -2,14 +2,14 @@
 
 2026-10-08の復旧基準main: `258b92db13fdfc74259fb0550e7d2be883411343`。
 追跡: [Issue #15](https://github.com/hm2236/jamio-news/issues/15)。
-Benchmark #1 / #38/#39/#40/#43と比較用テスト・採点条件は凍結。スケジュールはユーザー確認により全部一時停止中。ここでは再開・merge・公開・production設定・秘密情報を変更しない。
+Benchmark #1 / #38/#39/#40/#43と比較用テスト・採点条件は凍結。朝刊・夕刊の**既存ChatGPT予定タスク**は2026-10-08にDraft PR作成までの試験モードへ切り替えて再有効化した（朝刊06:00 / 夕刊17:00 JST）。初回実行・接続能力は未実証。自動merge・本番公開・production設定・秘密情報の変更は禁止。
 
 ## 現在の停止地点
 
 | 区分 | 状況 |
 | --- | --- |
 | 既刊サイト | main Pages run 37611983928成功。最後は10/6朝刊・夕刊。exact SHA receipt/HTMLを復旧workflowで再確認する。 |
-| 制作の運用停止 | ChatGPT予定制作は全部一時停止。10/7・10/8の号がない。新しいタスクの重複登録や自動再開はしない。 |
+| 制作の運用停止 | 10/7・10/8の号がない。既存予定タスクを10/9からDraft-only試験として再開設定済みだが、実際の無人GitHub writer成功はまだ証明されていない。タスクは重複登録しない。 |
 | GitHub collector | 10/8 run 37708022976は09:29:20 JSTに作成（06:00目標から3h29m20s遅延）。14入口取得、OpenAI403、awaiting-editorial。原稿は生成していない。GitHubのschedule実行記録とユーザーが停止したChatGPTタスクは区別する。 |
 | 期限切れ | 同collector epochは11:29:20 JSTで2時間期限終了。14日artifact保持を制作の有効期限に代用しない。 |
 | 未接続 | producer handoff / autonomous writer / merger / notifier。#37はcomments=0、mainにingress workflowなし。朝刊collectorは朝刊のみで、夕刊の自律制作はない。 |
@@ -89,12 +89,29 @@ node /path/to/recovery-branch/scripts/recovery-preview.mjs /path/to/packet.json 
 node /path/to/recovery-branch/scripts/recovery-status.mjs /path/to/new-status.json
 ```
 
+## trusted main で実行するpacket専用プレビュー（導入後）
+
+従来の `Recovery implementation checks` は **pull_request** から動く基盤PRの合成テスト／read-only状態確認用で、PR側コードを実行するため **独立した原稿承認証拠ではない**。packet-only PRを起動条件から外した。歴史的な10/8実記事プレビュー成果物は有効なリハーサル証拠だが、その自動検証自体を信頼済み刊行ゲートとして扱わない。
+
+このPRが人間承認とmain保護の通常mergeを経て入った**後**、新設の `Trusted recovery preview (unpublished)` が **pull_request_target** の信頼済みmain workflowとして `recovery-packets/**` を検知する。
+
+- baseの **exact SHA** だけをcheckoutし、`scripts/recovery-trusted-pr.mjs` / 検証器 / build / offline export は **そのbaseからのみ実行**。PR側コードをcheckout・実行しない。GitHub tokenはcontents:read、persist-credentials:false。fork PRは拒否、秘密・書込・deployなし。
+- event/現在PR/mainのSHA、同repo・open・recovery branch、1個だけのpacket JSON追加、1コミット・親がexact base、regular file(mode100644)、1MiB上限、base/slug一致を先に検証。PRを偽装してheadの検証器やworkflowを変更すると、packet-only条件で拒否。
+- main・同日daily branch・open daily PRの**実API照合を前後に実行**。JST date/未来時刻、現行schema、既刊digest、ビルド、offline-previewはmainの正本コードで検証。最後の衝突で失敗したら生成outputを削除。
+- 成功時のみ `trusted-unpublished-review-<run>-<attempt>` artifact と `trusted-preview.json` を保存。base/head SHA、packet SHA256、候補digest、offline HTML SHA256、`publicationAuthorized:false`、`editorialReviewRequired:true` を含む。これは trusted source の **プレビュー実行証拠**であって、記事の意味的真偽・出版・公開receiptは証明しない。
+- 別の安全用 [PR #49](https://github.com/hm2236/jamio-news/pull/49) がmainへ導入されるまでは、packet-only PRを非日刊ガードで機械的にmerge拒否できない。**この2つの復旧PRはそれぞれDraftで未マージ**。packetテストPRは手動でも絶対にmergeせず、成果物確認後クローズする。
+- 導入前のこの新workflowはmainに存在しないため `pull_request_target` の実走は **未実証**。PR CIの成功は将来mainでの実動作成功と同一視しない。導入後の当日packet-only PRでexact-runとartifactを検証する。もし信頼済みworkflowが起動しなければ、旧pull_request側へ戻して安全ゲートを迂回しない。
+
+## 明朝のwriter試験と既知の限界
+
+対話ChatGPTからのGitHub Contents APIによる隔離・非日刊 [PR #50](https://github.com/hm2236/jamio-news/pull/50) では、2コミットの1file/create-only、正しい親子関係、同じ最終Candidate-Attempt trailerの保持、CI成功を実証した。**試験PRはclosed/unmerged**。予定タスク側の権限や無人実行はそれによって保証されない。06:00 JSTの初回試験では本物の5本・実際のsource checked・最後のedition sealを要求し、partial失敗はfail-closedで停止。朝刊が未公開なら夕刊は調査のみで候補PRを書き始めない。
+
 ## #45の位置づけと再開判断
 
 #45のtrusted original-event enrichmentは、producerが提出するuntrusted URLをtrusted collector artifactへ安全に昇格する無人ingress用の課題。index-only collectorをevaluateDraftへ通すために検証を緩めない。本復旧ではenrich/evaluate/collector/ingress/比較候補を変更しない。人間が原典を読み、現行publishing契約とtrusted daily guardを使う経路の必須要件ではない。
 
 再開する前にユーザーが決める事項:
-- 制作予定タスクをいつ再開するか。既存タスクID/接続能力を確認し、重複登録しない。
+- 既存予定タスクはDraft-onlyで再有効化済み。10/9の実行履歴・必要権限・原稿とGitHubへの接続を確認し、重複登録しない。
 - 最初は人間承認の刊行で復帰するか、別の無人接続設計を承認するか。
 - 実際の記事の原典レビューを終えた日刊PRのmerge/公開承認。
 
