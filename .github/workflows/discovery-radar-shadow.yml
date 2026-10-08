@@ -50,6 +50,8 @@ jobs:
       - name: Capture fixed sources without external credentials
         id: capture
         run: node scripts/discovery-radar.mjs capture
+      - name: Surface Radar shadow health and unproven editorial coverage
+        run: node scripts/discovery-radar-health.mjs
       - name: Retain validated combined rolling payload
         uses: actions/upload-artifact@v4
         with:

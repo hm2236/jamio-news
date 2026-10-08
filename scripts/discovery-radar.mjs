@@ -132,7 +132,7 @@ export function createSourceFetcher({resolver = host => dns.lookup(host,{all:tru
         if (next.hostname !== new URL(url).hostname || !endpointAllowed(next.href,source)) fail('redirect-policy');
         url = next.href; continue;
       }
-      if (r.status !== 200) fail('http-status');
+      if (r.status !== 200) fail(r.status === 403 ? 'http-forbidden' : r.status === 429 ? 'http-rate-limited' : r.status >= 500 && r.status <= 599 ? 'http-server-error' : 'http-status');
       const type = String(r.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
       if (!source.contentTypes.includes(type) || r.headers['content-encoding'] && r.headers['content-encoding'] !== 'identity') fail('content-type');
       const capturedAt = iso(clock());
