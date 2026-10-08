@@ -9,12 +9,13 @@ import {canonical, serialize, loadRepository, readDraft, applyDraft} from '../sc
 import {liveContext, repositoryDigests, evaluateDraft} from '../scripts/autonomous.mjs';
 import {digest} from '../scripts/source-research.mjs';
 import {config, CHUNK_MARKER, SEAL_MARKER, LOG_MARKER, parseChunk, parseSeal, checkEvent, assemblePackage, parseEditorial, ingest, logLine} from '../scripts/package-ingress.mjs';
+import * as ingressNs from '../scripts/package-ingress.mjs';
 
 const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
 const REPO = 'hm2236/jamio-news', INBOX = `https://api.github.com/repos/${REPO}/issues/37`;
 const ATTEMPT = 'morning-20261007-attempt-01';
 const RUN_ID = 37000000001, RUN_CREATED = '2026-10-06T21:00:00Z';
-const NOW = new Date('2026-10-07T06:45:00+09:00');
+const NOW = new Date('2026-10-07T07:00:00+09:00');
 const header = h => JSON.stringify({version:1, attemptId:ATTEMPT, file:h.file, part:h.part ?? 1, parts:h.parts ?? 1, ...h.override});
 const chunkBody = (h, payload) => `${CHUNK_MARKER}\n${typeof h === 'string' ? h : header(h)}\n\n${payload}`;
 const sealBody = seal => `${SEAL_MARKER}\n${JSON.stringify(seal)}\n`;
@@ -63,13 +64,14 @@ async function fixture(t, {existing = false} = {}) {
 
   const f = {root, slug, sha, snapshots, stories, articles, edition, calls:[], mainCalls:0, listCalls:0};
   f.run = {id:RUN_ID, run_attempt:1, path:'.github/workflows/autonomous-shadow.yml', event:'schedule', head_branch:'main', head_sha:sha, status:'completed', conclusion:'success', created_at:RUN_CREATED, repository:{full_name:REPO}};
-  f.artifacts = [{id:9101, name:`morning-shadow-${RUN_ID}-1`, expired:false, size_in_bytes:4096, digest:'sha256:' + 'c'.repeat(64), workflow_run:{id:RUN_ID, head_sha:sha}}];
+  f.artifacts = [{id:9101, name:`morning-shadow-${RUN_ID}-1`, expired:false, size_in_bytes:4096, digest:'sha256:' + 'c'.repeat(64), expires_at:'2026-10-21T21:30:00Z', workflow_run:{id:RUN_ID, head_sha:sha}}];
   f.branch = null; f.pulls = [];
   f.main = () => sha;
   f.editList = (n, list) => list;
   f.request = async url => {
     const u = new URL(url), route = u.pathname.replace(`/repos/${REPO}`, '') + u.search;
     f.calls.push(route);
+    if (f.fail?.(route)) return new Response(null, {status:503});
     const json = value => value === undefined || value === null ? new Response(null, {status:404}) : Response.json(structuredClone(value));
     if (route === '/git/ref/heads/main') return json({object:{sha:f.main(++f.mainCalls)}});
     if (route === `/git/ref/heads/daily/${slug}`) return json(f.branch);
@@ -123,7 +125,7 @@ async function fixture(t, {existing = false} = {}) {
     fs.writeFileSync(path.join(collectorDir, 'report.json'), JSON.stringify(f.report, null, 2));
     f.outputDir = outputDir; f.collectorDir = collectorDir;
     if (options.collector) options.collector(collectorDir);
-    return ingest({checkout:root, event:f.event, env:f.env, request:f.request, now:() => options.now || NOW, collectorDir, outputDir, expectedArtifactId:options.expectedArtifactId ?? 9101});
+    return ingest({checkout:root, event:f.event, env:f.env, request:f.request, now:options.clock || (() => options.now || NOW), collectorDir, outputDir, expectedArtifactId:options.expectedArtifactId ?? 9101});
   };
   f.post();
   return f;
@@ -139,7 +141,7 @@ test('valid package validates with trusted digests, immutable outputs and public
   assert.deepEqual(receipt.collector, {runId:String(RUN_ID), runAttempt:1, artifactId:9101, artifactName:`morning-shadow-${RUN_ID}-1`});
   assert.deepEqual(receipt.workflow, {runId:'9001', runAttempt:1, sha:f.sha}); assert.deepEqual(receipt.inbox, {repository:REPO, issue:37});
   assert.equal(receipt.chunks.length, 8); assert.equal(receipt.files.length, 6); assert.ok(receipt.files.every(file => /^content\/(articles|editions)\/2026-10-07-morning/.test(file)));
-  assert.match(receipt.editionUrl, /editions\/2026-10-07-morning\/$/); assert.match(receipt.editionDigest, /^[a-f0-9]{64}$/); assert.equal(receipt.validatedAt, '2026-10-07T06:45:00+09:00');
+  assert.match(receipt.editionUrl, /editions\/2026-10-07-morning\/$/); assert.match(receipt.editionDigest, /^[a-f0-9]{64}$/); assert.equal(receipt.validatedAt, '2026-10-07T07:00:00+09:00');
   // Digests are computed by trusted code from the downloaded report and reconstructed draft.
   const draft = path.join(f.outputDir, 'draft', f.slug), evidence = JSON.parse(fs.readFileSync(path.join(f.outputDir, 'evidence.json'), 'utf8'));
   assert.equal(receipt.reportDigest, digest(canonical(f.report))); assert.equal(receipt.packageDigest, digest(canonical(readDraft(draft))));
@@ -377,4 +379,172 @@ test('ingress workflow is trusted-main, read-only, seal-filtered, serialized and
   assert.deepEqual([config.repository, config.inboxIssue, config.producerActorId, config.producerAssociation, config.variant, config.collector.workflow], [REPO, 37, 42599072, 'OWNER', 'morning', '.github/workflows/autonomous-shadow.yml']);
   const script = fs.readFileSync(path.join(sourceRoot, 'scripts/package-ingress.mjs'), 'utf8');
   assert.ok(!/applyDraft|method:\s*'(POST|PUT|PATCH|DELETE)'|\beval\(|new Function|execSync|spawn|shell:/.test(script));
+});
+
+// ---- Candidate B repair (Issue #41): final fences, clock binding, replay policy, multipart protocol ----
+const noOutput = f => assert.ok(!fs.existsSync(path.join(f.outputDir, 'receipt.json')) && !fs.existsSync(path.join(f.outputDir, 'draft')), 'no validated output');
+// Hooks run on the final (second) inbox scan, i.e. after the initial checks and evaluateDraft() passed.
+const atFinal = (f, mutate) => { f.editList = (n, list) => { if (n === 2) mutate(f); return list; }; };
+// Tabulates every case (code, or VALIDATED for a success) so a failure shows the whole outcome table.
+const outcome = promise => promise.then(() => 'VALIDATED', error => error.code || `uncoded:${error.message}`);
+
+test('B-P1-1: a daily branch or PR appearing during validation is caught by the final collision fence', async t => {
+  const cases = [
+    ['final-daily-branch', f => { f.branch = {object:{sha:'b'.repeat(40)}}; }],
+    ['final-daily-pr', f => { f.pulls = [{number:99}]; }],
+    ['final-fence-unavailable', f => { f.fail = r => r.startsWith('/git/ref/heads/daily/'); }],
+    ['final-fence-unavailable', f => { f.fail = r => r.startsWith('/pulls?'); }],
+    ['final-fence-unavailable', f => { f.pulls = {message:'not a list'}; }]
+  ];
+  const got = [];
+  for (const [, mutate] of cases) { const f = await fixture(t); atFinal(f, mutate); got.push(await outcome(f.ingest())); if (got.at(-1) !== 'VALIDATED') noOutput(f); }
+  assert.deepEqual(got, cases.map(([code]) => code));
+  // The final collision reads come after every other final read (only the clock reading follows).
+  const order = await fixture(t); await order.ingest();
+  const last = order.calls.slice(-2);
+  assert.deepEqual(last, [`/git/ref/heads/daily/${order.slug}`, `/pulls?state=open&head=hm2236:daily/${order.slug}&per_page=100`]);
+});
+
+test('B-P1-2: collector run/artifact identity, success and expiry are revalidated at the final fence', async t => {
+  const cases = [
+    ['collector-attempt', f => { f.run.run_attempt = 2; f.artifacts[0].name = `morning-shadow-${RUN_ID}-2`; }],
+    ['collector-not-successful', f => { f.run.status = 'in_progress'; f.run.conclusion = null; }],
+    ['collector-not-successful', f => { f.run.conclusion = 'cancelled'; }],
+    ['collector-missing', f => { f.run = null; }],
+    ['collector-artifact-missing', f => { f.artifacts = []; }],
+    ['collector-artifact-missing', f => { f.artifacts.push({...f.artifacts[0], id:9102}); }],
+    ['collector-artifact-invalid', f => { f.artifacts[0].expired = true; }],
+    ['collector-changed', f => { f.artifacts[0] = {...f.artifacts[0], id:9103}; }],
+    ['collector-changed', f => { f.artifacts[0] = {...f.artifacts[0], digest:'sha256:' + 'd'.repeat(64)}; }],
+    ['collector-changed', f => { f.artifacts[0] = {...f.artifacts[0], size_in_bytes:4097}; }],
+    ['collector-changed', f => { f.run = {...f.run, created_at:'2026-10-06T21:00:01Z'}; }],
+    ['collector-artifact-expired', f => { f.artifacts[0].expires_at = '2026-10-06T21:59:00Z'; }],
+    ['stale-base', f => { f.main = () => 'b'.repeat(40); }],
+    ['final-fence-unavailable', f => { f.fail = r => r.startsWith(`/actions/runs/${RUN_ID}`); }],
+    ['final-fence-unavailable', f => { f.fail = r => r === '/git/ref/heads/main'; }]
+  ];
+  const got = [];
+  for (const [, mutate] of cases) { const f = await fixture(t); atFinal(f, mutate); got.push(await outcome(f.ingest())); if (got.at(-1) !== 'VALIDATED') noOutput(f); }
+  assert.deepEqual(got, cases.map(([code]) => code));
+  // Initial checks cannot prove an artifact is live without expires_at; reject instead of assuming.
+  for (const value of [undefined, 'never', '2026-10-06T21:50:00Z']) {
+    const f = await fixture(t); f.artifacts[0].expires_at = value;
+    await rejects(f.ingest(), value === undefined || value === 'never' ? 'collector-artifact-invalid' : 'collector-artifact-expired');
+  }
+  // The collector report is only ever the downloaded trusted artifact, never producer comment data.
+  const ok = await fixture(t); const receipt = await ok.ingest();
+  assert.equal(receipt.collector.artifactId, 9101);
+  assert.ok(ok.calls.filter(r => r === `/actions/runs/${RUN_ID}`).length >= 4, 'run re-read at final fence');
+  assert.ok(ok.calls.filter(r => r.startsWith(`/actions/runs/${RUN_ID}/artifacts`)).length >= 2, 'artifacts re-read at final fence');
+});
+
+test('B-P1-3: validatedAt is the final fence reading and expiry inside execution never yields stale success', async t => {
+  // Scripted clock: readings before index k are 07:59:59 JST, from k on 08:00:01 (collector start + 2h + 1s).
+  const crossing = k => { let i = 0; return () => new Date(++i < k ? '2026-10-07T07:59:59+09:00' : '2026-10-07T08:00:01+09:00'); };
+  const table = [];
+  for (let k = 1; k <= 10; k++) {
+    const f = await fixture(t);
+    try {
+      const receipt = await f.ingest({clock:crossing(k)});
+      // Any success must be stamped with a reading inside the sealed window (07:59:59 <= start + 2h).
+      table.push(receipt.validatedAt === '2026-10-07T07:59:59+09:00' && Date.parse(receipt.validatedAt) <= Date.parse(receipt.window?.notAfter) ? 'ok-in-window' : `STALE-SUCCESS ${receipt.validatedAt}`);
+    } catch (error) {
+      noOutput(f);
+      table.push(['stale-context', 'expired-during-validation'].includes(error.code) ? 'ok-rejected' : `unexpected ${error.code}`);
+    }
+  }
+  assert.deepEqual(table.map((r, i) => `k=${i + 1} ${r}`), table.map((r, i) => `k=${i + 1} ${r.startsWith('ok-') ? r : 'ok-*'}`));
+  assert.ok(table.includes('ok-in-window') && table.includes('ok-rejected'), 'both outcomes exercised');
+  // The receipt binds the sealed collector JST epoch and the exclusive expiry used by every final check.
+  const ok = await fixture(t), receipt = await ok.ingest();
+  assert.deepEqual(receipt.window, {collectorStartedAt:'2026-10-07T06:00:00+09:00', date:'2026-10-07', notAfter:'2026-10-07T08:00:00.000+09:00'});
+  // Midnight JST ends the window before start+2h; an earlier artifact expiry ends it sooner (exclusive of expires_at).
+  const late = {...ok.context, startedAt:'2026-10-07T22:30:00+09:00'}, far = {expires_at:'2026-10-21T21:30:00Z'};
+  assert.equal(ingressNs.validationWindow(late, far).notAfter, '2026-10-07T23:59:59.999+09:00');
+  assert.equal(ingressNs.validationWindow(ok.context, {expires_at:'2026-10-06T22:30:00Z'}).notAfter, '2026-10-07T07:29:59.999+09:00');
+  assert.equal(ingressNs.validationWindow(ok.context, far).notAfter, '2026-10-07T08:00:00.000+09:00');
+  // Clock disagreement: time travel backwards, invalid readings, or a runner clock before the sealed comment.
+  let j = 0;
+  const back = await fixture(t); await rejects(back.ingest({clock:() => new Date(++j === 3 ? '2026-10-07T06:59:00+09:00' : '2026-10-07T07:00:00+09:00')}), 'clock-regression'); noOutput(back);
+  const invalid = await fixture(t); await rejects(invalid.ingest({clock:() => new Date('not a time')}), 'clock-invalid');
+  const early = await fixture(t); await rejects(early.ingest({now:new Date('2026-10-07T06:50:00+09:00')}), 'clock-disagreement');
+  // Inclusive boundary: exactly collector start + 2h is still inside the existing fence.
+  const edge = await fixture(t); assert.equal((await edge.ingest({now:new Date('2026-10-07T08:00:00+09:00')})).validatedAt, '2026-10-07T08:00:00+09:00');
+});
+
+test('replay policy: repeats and other attempts are independent shadow validations; same-attempt competitors fail closed', async t => {
+  // Re-running the same seal (e.g. a workflow re-run) is an independent validation, not deduplicated.
+  const f = await fixture(t), first = await f.ingest();
+  f.env = {...f.env, GITHUB_RUN_ATTEMPT:'2'}; const second = await f.ingest();
+  assert.deepEqual({...second, workflow:first.workflow}, first); assert.equal(second.workflow.runAttempt, 2);
+  assert.deepEqual(first.replay, {policy:'independent-shadow-validation', exactlyOnce:false});
+  // Another attempt's referenced-elsewhere chunks and seal on the same day do not affect this attempt.
+  const other = await fixture(t); other.post();
+  const foreign = other.build().slice(0, 2).map((c, k) => ({id:other.sealComment.id - 3 + k, issue_url:INBOX, user:{id:42599072}, author_association:'OWNER', created_at:'2026-10-06T21:50:00Z', updated_at:'2026-10-06T21:50:00Z', body:chunkBody({...c, override:{attemptId:'morning-20261007-attempt-02'}}, c.payload)}));
+  other.comments.splice(-1, 0, ...foreign, {...other.sealComment, id:other.sealComment.id + 5, body:sealBody({...other.seal, attemptId:'morning-20261007-attempt-02', chunks:foreign.map(c => c.id)})});
+  assert.equal((await other.ingest()).status, 'validated');
+  // Concurrent same-attempt seals: whichever run evaluates, each sees the other and rejects.
+  const a = await fixture(t), twin = {...a.sealComment, id:a.sealComment.id + 2, body:sealBody({...a.seal, chunks:a.seal.chunks.slice()})};
+  a.comments.push(twin); await rejects(a.ingest(), 'duplicate-seal');
+  a.event = {...a.event, comment:structuredClone(twin)}; a.sealComment = twin; await rejects(a.ingest(), 'duplicate-seal');
+  // Malformed authorized marker comments in the active-day window cannot be attributed to an attempt: fail closed.
+  for (const body of [`${SEAL_MARKER}\n{not json`, `${CHUNK_MARKER}\n{"attemptId":`, `${SEAL_MARKER}\n["${ATTEMPT}"]`]) {
+    const g = await fixture(t); g.comments.splice(-1, 0, {...g.comments[0], id:g.sealComment.id - 1, body});
+    await rejects(g.ingest(), 'unattributable-marker');
+  }
+  // Non-authorized marker comments remain ignored (they cannot block the producer).
+  const h = await fixture(t); h.comments.splice(-1, 0, {...h.comments[0], id:h.sealComment.id - 1, user:{id:1}, author_association:'NONE', body:`${SEAL_MARKER}\n{not json`});
+  assert.equal((await h.ingest()).status, 'validated');
+  // Active-day inbox bounds and API failures.
+  const scan = await fixture(t), base = scan.request;
+  scan.request = async url => url.includes('/issues/37/comments?') ? Response.json(Array.from({length:100}, (_, k) => ({id:k + 1}))) : base(url);
+  await rejects(scan.ingest(), 'inbox-scan-bound');
+  const down = await fixture(t); down.fail = r => r.startsWith('/issues/37/comments'); await rejects(down.ingest(), 'inbox-unavailable');
+  const predates = await fixture(t); predates.sealComment.created_at = predates.sealComment.updated_at = '2026-10-06T20:59:00Z'; predates.event.comment = structuredClone(predates.sealComment);
+  await rejects(predates.ingest(), 'seal-predates-collector');
+});
+
+test('multipart normalization protocol: LF/CRLF, blank lines, trailing newline and UTF-8 boundaries', async t => {
+  const f = await fixture(t);
+  const reconstruct = (payloads, eol = '\n') => {
+    const rest = f.build().filter(c => c.file !== 'edition.md');
+    f.post([...rest, ...payloads.map((payload, k) => ({file:'edition.md', part:k + 1, parts:payloads.length, body:chunkBody({file:'edition.md', part:k + 1, parts:payloads.length}, payload).replace(/\n/g, eol)}))]);
+    return assemblePackage(f.seal, f.sealComment, f.comments).files['edition.md'];
+  };
+  // Canonical rule: CRLF->LF; drop exactly one trailing LF per payload; join parts with LF; end the file with LF.
+  assert.equal(reconstruct(['a\nb\n']), 'a\nb\n');
+  assert.equal(reconstruct(['a\nb']), 'a\nb\n', 'missing final newline is canonicalized');
+  assert.equal(reconstruct(['a\nb\n'], '\r\n'), 'a\nb\n', 'CRLF transport is identical to LF');
+  assert.equal(reconstruct(['a\n\n\nb\n']), 'a\n\n\nb\n', 'interior blank lines preserved');
+  assert.equal(reconstruct(['a\n\n']), 'a\n\n', 'one trailing blank line preserved');
+  assert.equal(reconstruct(['a\n\n', 'b\n']), 'a\n\nb\n', 'blank line at a split needs the explicit extra LF');
+  assert.equal(reconstruct(['a\n', 'b\n']), 'a\nb\n', 'a single trailing LF at a split is the separator, not a blank line');
+  assert.equal(reconstruct(['', 'b']), '\nb\n');
+  // Producer splitter per the documented rule round-trips any LF text at every line boundary.
+  const split = (text, at) => { const lines = text.slice(0, -1).split('\n'); return [lines.slice(0, at).join('\n') + '\n', lines.slice(at).join('\n') + '\n']; };
+  for (const text of ['x\n', 'x\n\ny\n', '\n\nx\n\n', 'あ\n😀\n\nend\n']) {
+    assert.equal(reconstruct([text]), text);
+    const count = text.slice(0, -1).split('\n').length;
+    for (let at = 1; at < count; at++) {
+      assert.equal(reconstruct(split(text, at)), text, JSON.stringify([text, at]));
+      assert.equal(reconstruct(split(text, at), '\r\n'), text, JSON.stringify(['crlf', text, at]));
+    }
+  }
+  // UTF-8: limits are bytes of the normalized payload; multibyte characters never split because cuts are at LF.
+  const max = config.limits.maxPartBytes;
+  assert.equal(Buffer.byteLength(parseChunk(chunkBody({file:'edition.md'}, 'あ'.repeat(Math.floor(max / 3)) + 'x'.repeat(max % 3))).payload), max);
+  assert.throws(() => parseChunk(chunkBody({file:'edition.md'}, '😀'.repeat(max / 4) + 'x')), e => e.code === 'part-too-large');
+  assert.equal(Buffer.byteLength(parseChunk(chunkBody({file:'edition.md'}, '😀'.repeat(max / 4))).payload), max);
+  // Part limits count normalized (LF) bytes, but the raw comment pre-check (maxPartBytes + 1KiB, before CRLF
+  // normalization) also bounds the transported body: documented limitation, not a byte-preservation change.
+  const lines = n => ('x'.repeat(63) + '\n').repeat(n);
+  assert.equal(parseChunk(chunkBody({file:'edition.md'}, lines(900)).replace(/\n/g, '\r\n')).payload, lines(900).slice(0, -1));
+  assert.equal(Buffer.byteLength(parseChunk(chunkBody({file:'edition.md'}, lines(1024))).payload), max - 1);
+  assert.throws(() => parseChunk(chunkBody({file:'edition.md'}, lines(1024)).replace(/\n/g, '\r\n')), e => e.code === 'part-too-large');
+  // Ill-formed UTF-16 (lone surrogate) cannot be raw UTF-8 text: reject instead of silently substituting U+FFFD.
+  assert.throws(() => parseChunk(chunkBody({file:'edition.md'}, 'a\ud800b')), e => e.code === 'chunk-malformed');
+  // End to end: a CRLF-transported package yields the same trusted package digest as LF.
+  const lf = await fixture(t), crlf = await fixture(t);
+  crlf.post(crlf.build().map(c => ({...c, body:chunkBody(c, c.payload).replace(/\n/g, '\r\n')})));
+  assert.equal((await crlf.ingest()).packageDigest, (await lf.ingest()).packageDigest);
 });

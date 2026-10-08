@@ -36,7 +36,8 @@ function normalized(body, maxBytes, code) {
   if (typeof body !== 'string') reject(code);
   if (Buffer.byteLength(body) > maxBytes) reject(code === 'seal-malformed' ? code : 'part-too-large');
   const text = body.replace(/\r\n/g, '\n');
-  if (/[\0\r]/.test(text)) reject(code);
+  // Lone surrogates cannot be raw UTF-8 text; reject rather than let Buffer substitute U+FFFD.
+  if (/[\0\r]/.test(text) || !text.isWellFormed()) reject(code);
   return text;
 }
 const firstLine = body => typeof body === 'string' ? body.replace(/\r\n/g, '\n').split('\n', 1)[0] : '';
@@ -110,6 +111,34 @@ const snapshot = c => ({id:c.id, issueUrl:c.issue_url, actorId:c.user?.id, assoc
 const attemptOf = body => { try { return JSON.parse(body.replace(/\r\n/g, '\n').split('\n')[1]).attemptId; } catch { return undefined; } };
 const authorized = c => c.user?.id === config.producerActorId && c.author_association === config.producerAssociation;
 
+// Every clock reading of one validation goes through this reader: invalid or backwards time fails closed.
+function monotonic(now) {
+  let last = -Infinity;
+  return () => {
+    const ms = +new Date(now());
+    if (!Number.isFinite(ms)) reject('clock-invalid');
+    if (ms < last) reject('clock-regression', 'Clock moved backwards during validation');
+    return new Date(last = ms);
+  };
+}
+const JST_OFFSET = 9 * 3600000, DAY = 86400000, WINDOW = 2 * 3600000;
+const jstMs = ms => new Date(ms + JST_OFFSET).toISOString().replace('Z', '+09:00');
+// The sealed validity window: collector JST start + 2h (existing fence), the end of that JST date and the
+// collector artifact expiry (exclusive), whichever is first. notAfter is inclusive, millisecond precision.
+export function validationWindow(context, artifact) {
+  const start = Date.parse(context.startedAt), midnight = Math.floor((start + JST_OFFSET) / DAY) * DAY + DAY - JST_OFFSET;
+  const notAfter = Math.min(start + WINDOW, midnight - 1, Date.parse(artifact?.expires_at) - 1);
+  if (!Number.isFinite(notAfter)) reject('collector-artifact-invalid');
+  return {collectorStartedAt:context.startedAt, date:context.date, notAfter:jstMs(notAfter)};
+}
+// Time checks for one reading; the same rules apply at start, at the final fence and after writing outputs.
+function assertClock(at, {seal, sealComment, artifact, context}) {
+  if (+at < Date.parse(sealComment.created_at)) reject('clock-disagreement', 'Runner clock precedes the seal comment');
+  if (jst(at).slice(0, 10) !== seal.date) reject('stale-date');
+  if (!(Date.parse(artifact.expires_at) > +at)) reject('collector-artifact-expired');
+  if (context) try { fence(context, context, at); } catch (error) { reject('stale-context', error.message); }
+}
+
 // Reconstructs exactly one allowed logical package from the referenced chunks.
 export function assemblePackage(seal, sealComment, comments, {since, limits = config.limits, articleCount = config.articleCount} = {}) {
   const byId = new Map();
@@ -122,6 +151,8 @@ export function assemblePackage(seal, sealComment, comments, {since, limits = co
   for (const comment of comments) {
     if (comment.id === sealComment.id || !authorized(comment) || typeof comment.body !== 'string') continue;
     const marker = firstLine(comment.body);
+    // Declared policy: authorized marker comments that cannot be attributed to an attempt block every attempt.
+    if ((marker === SEAL_MARKER || marker === CHUNK_MARKER) && typeof attemptOf(comment.body) !== 'string') reject('unattributable-marker');
     if (marker === SEAL_MARKER && attemptOf(comment.body) === seal.attemptId) reject('duplicate-seal');
     if (marker === CHUNK_MARKER && !seal.chunks.includes(comment.id) && attemptOf(comment.body) === seal.attemptId) reject('unreferenced-chunk');
   }
@@ -180,20 +211,20 @@ async function fetchComment(id, options) {
 export async function listInbox(since, options) {
   const comments = [];
   for (let page = 1; page <= config.limits.maxInboxPages; page++) {
-    const batch = await githubJSON(`/issues/${config.inboxIssue}/comments?since=${encodeURIComponent(since)}&per_page=100&page=${page}`, options);
+    let batch;
+    try { batch = await githubJSON(`/issues/${config.inboxIssue}/comments?since=${encodeURIComponent(since)}&per_page=100&page=${page}`, options); } catch (error) { reject('inbox-unavailable', error.message); }
     if (!Array.isArray(batch)) reject('inbox-unavailable');
     comments.push(...batch);
     if (batch.length < 100) return comments;
   }
   reject('inbox-scan-bound');
 }
-async function fenceMain(seal, head, env, now, options) {
-  const main = await githubJSON('/git/ref/heads/main', options);
+function checkMain(seal, main, head, env) {
   if (main?.object?.sha !== seal.baseSha || head !== seal.baseSha || env.GITHUB_SHA !== seal.baseSha) reject('stale-base');
-  if (jst(now()).slice(0, 10) !== seal.date) reject('stale-date');
 }
 
-export async function verifyCollector(seal, options) {
+// `at` (a clock reading) additionally proves the artifact has not expired at that time.
+export async function verifyCollector(seal, options, at) {
   const run = await githubJSON(`/actions/runs/${seal.collectorRunId}`, {...options, allow404:true});
   if (!run || String(run.id) !== seal.collectorRunId) reject('collector-missing');
   if (run.path !== config.collector.workflow || run.repository?.full_name !== config.repository || run.head_branch !== 'main' || !config.collector.events.includes(run.event)) reject('collector-workflow');
@@ -209,8 +240,16 @@ export async function verifyCollector(seal, options) {
   if (matches.length !== 1) reject('collector-artifact-missing');
   const [artifact] = matches;
   if (artifact.expired || !Number.isSafeInteger(artifact.id) || artifact.workflow_run?.id !== run.id || artifact.workflow_run?.head_sha !== seal.baseSha || !(artifact.size_in_bytes <= config.collector.maxArtifactBytes)) reject('collector-artifact-invalid');
+  // Liveness cannot be assumed: without a parseable expiry the API does not prove the artifact is retained.
+  if (typeof artifact.expires_at !== 'string' || !Number.isFinite(Date.parse(artifact.expires_at))) reject('collector-artifact-invalid', 'Artifact expiry is not provable');
+  if (at && !(Date.parse(artifact.expires_at) > +at)) reject('collector-artifact-expired');
   return {run, artifact};
 }
+// Fields that must not change between the initial and the final collector reads (expiry is checked by time).
+const collectorIdentity = ({run, artifact}) => canonical({
+  run:{id:run.id, attempt:run.run_attempt, createdAt:run.created_at, headSha:run.head_sha, headBranch:run.head_branch, path:run.path, event:run.event, repository:run.repository?.full_name, status:run.status, conclusion:run.conclusion},
+  artifact:{id:artifact.id, name:artifact.name, size:artifact.size_in_bytes, digest:artifact.digest ?? null, createdAt:artifact.created_at ?? null, runId:artifact.workflow_run?.id, headSha:artifact.workflow_run?.head_sha}
+});
 
 // The report is read only from the artifact downloaded by trusted Actions credentials.
 export function readCollectorReport(dir, seal) {
@@ -238,15 +277,40 @@ export async function preflight({checkout = root, event, env = process.env, requ
   assertInboxComment(sealComment, 'seal');
   // Re-fetched seal must be the exact triggering event comment.
   if (sealComment.id !== comment.id || sealComment.body !== comment.body || sealComment.created_at !== comment.created_at || sealComment.updated_at !== comment.updated_at) reject('seal-edited');
-  const head = gitHead(checkout);
-  await fenceMain(seal, head, env, now, options);
-  const {run, artifact} = await verifyCollector(seal, options);
+  const head = gitHead(checkout), at = monotonic(now)();
+  if (+at < Date.parse(sealComment.created_at)) reject('clock-disagreement', 'Runner clock precedes the seal comment');
+  checkMain(seal, await githubJSON('/git/ref/heads/main', options), head, env);
+  if (jst(at).slice(0, 10) !== seal.date) reject('stale-date');
+  const {run, artifact} = await verifyCollector(seal, options, at);
+  if (Date.parse(sealComment.created_at) < Date.parse(run.created_at)) reject('seal-predates-collector');
   return {seal, sealComment, head, run, artifact};
 }
 
+// Final fence, immediately before validation success. Every trusted fact is re-read (collector run/artifact,
+// main, live context, then daily branch/PR collisions last) and one final clock reading is checked against all
+// of them; that reading becomes validatedAt. A branch/PR/main change after these reads is an unavoidable race
+// that only a future create-only writer can close; this shadow step makes no atomicity claim.
+async function finalFence({checkout, seal, sealComment, head, env, report, run, artifact, clock, options}) {
+  const read = async (fn) => { try { return await fn(); } catch (error) { if (error instanceof IngressError) throw error; reject('final-fence-unavailable', error.message); } };
+  const collector = await read(() => verifyCollector(seal, options));
+  if (collectorIdentity(collector) !== collectorIdentity({run, artifact})) reject('collector-changed', 'Collector run or artifact identity changed during validation');
+  checkMain(seal, await read(() => githubJSON('/git/ref/heads/main', options)), head, env);
+  let current;
+  try { current = await liveContext(checkout, seal.collectorRunId, {...options, now:clock}); } catch (error) { if (error instanceof IngressError) throw error; reject('stale-context', error.message); }
+  const branch = await read(() => githubJSON(`/git/ref/heads/daily/${seal.slug}`, {...options, allow404:true}));
+  const pulls = await read(() => githubJSON(`/pulls?state=open&head=${owner}:daily/${seal.slug}&per_page=100`, options));
+  if (!Array.isArray(pulls)) reject('final-fence-unavailable', 'Open pull request list is not an array');
+  if (branch) reject('final-daily-branch', `daily/${seal.slug} appeared during validation`);
+  if (pulls.length) reject('final-daily-pr', `An open PR from daily/${seal.slug} appeared during validation`);
+  const at = clock();
+  assertClock(at, {seal, sealComment, artifact:collector.artifact, context:report.context});
+  try { fence(report.context, current, at); } catch (error) { reject('stale-context', error.message); }
+  return at;
+}
+
 export async function ingest({checkout = root, event, env = process.env, request, now = () => new Date(), collectorDir, outputDir, expectedArtifactId}) {
-  const options = {request};
-  const {seal, sealComment, head, run, artifact} = await preflight({checkout, event, env, request, now});
+  const options = {request}, clock = monotonic(now);
+  const {seal, sealComment, head, run, artifact} = await preflight({checkout, event, env, request, now:clock});
   if (expectedArtifactId !== undefined && artifact.id !== expectedArtifactId) reject('collector-artifact-invalid');
   const report = readCollectorReport(collectorDir, seal);
 
@@ -271,8 +335,9 @@ export async function ingest({checkout = root, event, env = process.env, request
     // Every digest is computed here by trusted code from trusted bytes.
     const evidence = {version:1, context:report.context, reportDigest:digest(canonical(report)), packageDigest:digest(canonical(bundle)), stories};
     let current, result;
-    try { current = await liveContext(checkout, seal.collectorRunId, {...options, now}); fence(report.context, current, now()); } catch (error) { reject('stale-context', error.message); }
-    try { result = evaluateDraft(checkout, report, folder, evidence, current, now()); } catch (error) { reject('evidence-invalid', error.message); }
+    const at = clock();
+    try { current = await liveContext(checkout, seal.collectorRunId, {...options, now:() => at}); fence(report.context, current, at); } catch (error) { if (error instanceof IngressError) throw error; reject('stale-context', error.message); }
+    try { result = evaluateDraft(checkout, report, folder, evidence, current, at); } catch (error) { reject('evidence-invalid', error.message); }
 
     // Mutable comments are not the trust object: re-fetch and compare everything at the end.
     const finalSeal = await fetchComment(sealComment.id, options);
@@ -283,17 +348,24 @@ export async function ingest({checkout = root, event, env = process.env, request
     if (pick(finalInbox) !== pick(inbox)) reject('package-altered');
     const again = assemblePackage(seal, finalSeal, finalInbox, {since:run.created_at});
     if (canonical(again) !== canonical({files, chunks})) reject('package-altered');
-    await fenceMain(seal, head, env, now, options);
-    try { fence(report.context, await liveContext(checkout, seal.collectorRunId, {...options, now}), now()); } catch (error) { reject('stale-context', error.message); }
+    const validatedAt = await finalFence({checkout, seal, sealComment, head, env, report, run, artifact, clock, options});
 
-    return writeValidated(outputDir, {seal, sealComment, head, run, artifact, chunks, bundle, evidence, result, env, now});
+    const receipt = writeValidated(outputDir, {seal, sealComment, head, run, artifact, chunks, bundle, evidence, result, env, validatedAt, window:validationWindow(report.context, artifact)});
+    // Expiry crossing while outputs were written must not leave a stale success behind.
+    try { assertClock(clock(), {seal, sealComment, artifact, context:report.context}); } catch (error) {
+      for (const name of OUTPUTS) fs.rmSync(path.join(outputDir, name), {recursive:true, force:true});
+      if (error.code === 'clock-regression' || error.code === 'clock-invalid') throw error;
+      reject('expired-during-validation', `Validation window closed before the receipt was sealed (${error.code})`);
+    }
+    return receipt;
   } finally {
     if (path.dirname(path.resolve(work)) !== path.resolve(os.tmpdir())) throw new Error('Unsafe ingress cleanup');
     fs.rmSync(work, {recursive:true, force:true});
   }
 }
 
-function writeValidated(outputDir, {seal, sealComment, head, run, artifact, chunks, bundle, evidence, result, env, now}) {
+const OUTPUTS = ['draft', 'evidence.json', 'collector.json', 'receipt.json'];
+function writeValidated(outputDir, {seal, sealComment, head, run, artifact, chunks, bundle, evidence, result, env, validatedAt, window}) {
   if (fs.existsSync(outputDir) && fs.readdirSync(outputDir).length) reject('output-exists');
   const draft = path.join(outputDir, 'draft', seal.slug);
   // Normalized, trusted re-serialization of the validated bundle for the future writer.
@@ -312,7 +384,11 @@ function writeValidated(outputDir, {seal, sealComment, head, run, artifact, chun
     collector:{runId:collector.runId, runAttempt:collector.runAttempt, artifactId:collector.artifactId, artifactName:collector.artifactName},
     chunks, reportDigest:evidence.reportDigest, packageDigest:evidence.packageDigest, evidenceDigest:digest(canonical(evidence)),
     editionUrl:result.editionUrl, editionDigest:result.digest, files:result.files,
-    validatedAt:jst(now()), publicationAuthorized:false
+    // validatedAt is the final fence reading, bound to the sealed collector window it was checked against.
+    validatedAt:jst(validatedAt), window,
+    // Each run is an independent shadow validation; no dedup, supersession or exactly-once publication claim.
+    replay:{policy:'independent-shadow-validation', exactlyOnce:false},
+    publicationAuthorized:false
   };
   for (const [name, value] of [['evidence.json', evidence], ['collector.json', collector], ['receipt.json', receipt]]) fs.writeFileSync(path.join(outputDir, name), JSON.stringify(value, null, 2) + '\n', {flag:'wx'});
   return receipt;
