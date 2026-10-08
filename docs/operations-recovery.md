@@ -1,44 +1,30 @@
-# JAMIO NEWS 実運用復旧（人間編集・公開前レビュー）
+# JAMIO NEWS 実運用復旧（人間承認・公開前レビュー）
 
-2026-10-08の復旧基準main: `258b92db13fdfc74259fb0550e7d2be883411343`。
-追跡: [Issue #15](https://github.com/hm2236/jamio-news/issues/15)。
-Benchmark #1 / #38/#39/#40/#43と比較用テスト・採点条件は凍結。朝刊・夕刊の**既存ChatGPT予定タスク**は2026-10-08にDraft PR作成までの試験モードへ切り替えて再有効化した（朝刊06:00 / 夕刊17:00 JST）。初回実行・接続能力は未実証。自動merge・本番公開・production設定・秘密情報の変更は禁止。
+追跡: [Issue #15](https://github.com/hm2236/jamio-news/issues/15)。2026-10-08 確認基準main: `137552438046ac6543c3a8e5bf164973f5f2baaf` （復旧PR #49 merge・Pages receipt成功）。このSHAは固定の作業対象ではない。**各操作の前にfresh main/headを再取得する。**
 
-## 現在の停止地点
+Benchmark #1 / PR #38/#39/#40/#43と比較条件は凍結し、#45は別件。2026-10-08に既存ChatGPT予定朝刊06:00/夕刊17:00 JSTタスクを**Draft PRまで・自動merge/公開禁止**として再有効化したが、無人writerの実成功は未実証。新タスクを重複作成しない。
 
-| 区分 | 状況 |
+## 現状の境界と未完了
+
+| 項目 | 判定 |
 | --- | --- |
-| 既刊サイト | main Pages run 37611983928成功。最後は10/6朝刊・夕刊。exact SHA receipt/HTMLを復旧workflowで再確認する。 |
-| 制作の運用停止 | 10/7・10/8の号がない。既存予定タスクを10/9からDraft-only試験として再開設定済みだが、実際の無人GitHub writer成功はまだ証明されていない。タスクは重複登録しない。 |
-| GitHub collector | 10/8 run 37708022976は09:29:20 JSTに作成（06:00目標から3h29m20s遅延）。14入口取得、OpenAI403、awaiting-editorial。原稿は生成していない。GitHubのschedule実行記録とユーザーが停止したChatGPTタスクは区別する。 |
-| 期限切れ | 同collector epochは11:29:20 JSTで2時間期限終了。14日artifact保持を制作の有効期限に代用しない。 |
-| 未接続 | producer handoff / autonomous writer / merger / notifier。#37はcomments=0、mainにingress workflowなし。朝刊collectorは朝刊のみで、夕刊の自律制作はない。 |
-| Radar部分劣化 | run 37743517204はworkflow success、内部health=degraded。鹿児島https-equivalence-needs-review、HN/Anthropic取得可。#27の7連続日受入は未達。本文証拠や記事生成の代用にならない。 |
-| サーバー保護 | active main ruleset 24643329: PR必須、build/daily-guard必須、strict=true、通常mergeのみ、force push/deletion拒否、bypassなし。daily ruleset 24643660: force push拒否。過去の「保護なし」監査は履歴。 |
+| 公開サイト | 最新の実号は2026-10-06朝刊・夕刊。#49を含むmain Pages [run 37768359860](https://github.com/hm2236/jamio-news/actions/runs/37768359860)はpublic HTML/digest receipt成功。新号ではない。 |
+| packet main混入防止 | [PR #49](https://github.com/hm2236/jamio-news/pull/49) merge済。非日刊PRの`recovery-packets/**` add/delete/renameはtrusted `daily-guard`拒否。[使い捨てPR #51](https://github.com/hm2236/jamio-news/pull/51)で実機拒否・未マージcloseを確認。 |
+| 復旧プレビュー | このPR #46の`Trusted recovery preview (unpublished)`はmainにmergeされる**までは起動不可**。候補の静的CI成功を本番導入済みと誤認しない。 |
+| 予定制作 | producer handoff / scheduled writer / merger / notifier / lease・outboxは別の未受入。朝刊first runと夕刊要否は実際のJST時刻と原典に依存。 |
+| 本番保護 | main ruleset 24643329: PR必須、exact `build`/`daily-guard` strict required、通常mergeのみ、non-fast-forward・delete拒否。daily ruleset 24643660はforce push拒否。 |
+| Radar/collector | collectorとRadarの遅延/劣化は原稿の一次ソースや出版証拠ではない。#27の長期acceptanceとは別。 |
 
-README、編集方針、publishing/daily guardは現行契約のまま使う。
-朝刊トップ5、夕刊は重要更新がある場合だけ1〜5本。夕刊なしは障害とは限らず、17:00の編集判断として理由を記録する。空号や埋め草を作らない。
+## 1. 人間レビュー前の原稿作成
 
-## 最短の復旧経路
-
-1. 人間/対話ChatGPTが今日の原典を実際に読み、記事と確認時刻を作る。新規LLM API課金は不要。原典の事実照合は構造検証では代行できない。
-2. 現行publishing契約のJSON bundleを、最新main SHA付きpacketにする。
-3. 復旧branchのPRでGitHub Linux上のpreviewを実行する。Windows/ローカルNodeに依存しない。productionには書かない。
-4. 出典、主張、プレビュー、既刊digest、ファイル一覧を人がレビューする。
-5. 別の `daily/<edition-slug>` branchを最新mainから作り、packetではなくレビュー済み記事・号だけを提出する。既存daily branch/PRがあれば所有者と調整する。通常Contents create-onlyなら記事を先に1file/commit、同じCandidate-Attempt trailerで、号を最後のimmutable sealにする。価格を載せる場合は単一commitの既存契約と分ける。
-6. trusted mainのDaily publication guardと正確なhead/baseのbuild CIが成功しても、previewやCIはmerge許可ではない。ユーザーの明示承認を得てからmerge/公開する。
-7. 正確なmerged mainのPages成功と対象slug/variant/URL/digest/HTMLを確認して初めてpublishedとする。別SHAの成功で代用しない。
-
-基盤PRと日刊PRは分離する。この復旧PRをmergeしなくても、隔離branchのpreview workflowを使って原稿のレビュー準備は可能。日刊PR自体は現在mainにある既存guard/buildで検証できる。
-
-## Packetとプレビュー
-
-packetのshape（具体的な記事データは `contracts/publishing.schema.json` の現行bundle契約）:
+1. 原典を実際に開き、JST時刻・出典URL・タイトル・要約・本文を作る。朝刊は**ちょうど5件**。夕刊は重要更新がある場合だけ1–5件、見送り可能。
+2. 現行`contracts/publishing.schema.json`および`production.mjs`契約を満たすbundleから、**fresh protected main SHA**固定のpacket JSONを作る。未来時刻、架空出典、埋め草、X未取得の偽記録、既刊記事の焼き直しは禁止。
+3. 出版とは独立した`recovery/<purpose>` branch上で、以下のパス**1ファイル追加・1コミット・base=main**のみのDraft PRを作る。mainや`daily/`には置かない。既存の同日packet/daily PRやbranchを再確認し、衝突時は止める。
 
 ```json
 {
   "version": 1,
-  "baseSha": "<fresh mainの40桁SHA>",
+  "baseSha": "<fresh main の40文字commit SHA>",
   "package": {
     "date": "YYYY-MM-DD",
     "edition": {},
@@ -48,71 +34,53 @@ packetのshape（具体的な記事データは `contracts/publishing.schema.jso
 }
 ```
 
-上の空欄は説明用で、実行可能な記事fixtureではない。JSONのslug/bodyはbundle側に含め、保存用Markdownではfilename/bodyへ移す。新規朝刊/夕刊のdate/variant/priceKeys、source checked、X利用状況、記事本数、時系列を埋める。取得していない出典や価格を作らない。
+packet名: `recovery-packets/YYYY-MM-DD-morning.json` または `recovery-packets/YYYY-MM-DD-evening.json`。1MiB以下、regular Git blob(100644)。空欄は説明用で、実際のbundleではない。公開リポジトリへ非公開文書・個人情報・鍵を送らない。
 
-1回に公開可能な情報だけを含む `recovery-packets/<edition-slug>.json` を1個、隔離復旧branchに追加しDraft PRを作る。公開GitHubなので個人情報、鍵、非公開資料を入れない。packetは最終日刊PRやmainにmergeしない。
-packetは1MiB以下、fresh main SHA、今日のJST日付、明示morning/evening必須。
+## 2. 信頼済みmainのプレビューだけを受け付ける
 
-`Recovery preview (no publication)` はPRでのみ起動し、schedule / push / workflow_dispatch / deploy / writerを持たない。contents:readのみ、checkout credentials非永続、secret・package installなし、Linux/Node22/10分。
-元mainの別checkoutとPR toolingを分離し、ライブmain/daily branch/PRをpreviewの前後にread-only照合する。読み取り不能/衝突/base前進で拒否する。最終read後のraceは原子的に保証しない。最終日刊PRのtrusted guard、原典レビュー、承認時のfreshness/head/base確認が別途必須。
+**このPR #46を通常の独立レビューとmain承認を経てmergeした後**、`.github/workflows/trusted-recovery-preview.yml` が **`pull_request_target`** / `recovery-packets/**` を処理する。
 
-検証は既存validatePackage → planDraft → scratch apply → validateDailyChange → buildを使用。ソースcheckoutへの記事/価格書き込み0。既刊digest保存、今日のJST/future timestamp、最終JST rolloverを確認する。previewは信頼済みcollector receipt/producer認証ではなく、人間レビュー用の候補。
+- 使う実行コード・schema・rendererは**exact protected main**からのみcheckoutし、PR headのcode/workflow/actionをcheckoutも実行もしない。同一repo/`main`へのopen recovery PR限定。fork、別base、stale/main headや失効日付は拒否。
+- headは`git show <exact-head>:<packet>` の単一JSON**データ**として読む。baseから単一親commit・新規packet1ファイルのみ・100644・サイズ上限・base/slug一致を確認。コード変更/複数commit/rename/symlink/削除は禁止。
+- 書き込み不能の`contents: read`と`pull-requests: read`の`GITHUB_TOKEN`をAPI読み取りに使用。`persist-credentials:false`、秘密やPR提供コードを一切実行しない。OIDC署名に限定した`id-token:write`、`attestations:write`、`artifact-metadata:write`は**記事・mainへの書き込み許可ではない**。
+- main/current PR/daily branch・PRのライブ照合を**生成前後**に実施。最終JST日付・main前進・競合・403/404以外のHTTP/タイムアウトを含めfail-closed。出力を残す前にsource snapshotを再照合する。
+- scratchにだけ`planDraft`→`applyDraft`→`validateDailyChange`→`build`を行い、ソースcheckoutのtrackedファイルは変更しない。既刊digest/候補ファイル/slug/記事数を検証する。
+- 成功時に`trusted-unpublished-review-<run>-<attempt>` artifactの`offline-review.html`、`offline-review.json`、`preview.json`、`candidate-files.json`、`site/`、`trusted-preview.json`を生成。`trusted-preview.json`にはrun ID/attempt、workflow ref/SHA、event、base/head SHA、packet/HTML digest、作成時刻/有効期限、`publicationAuthorized:false`を記録する。
+- **GitHub ActionsによるOIDC署名Artifact Attestation**が紙面HTMLと`trusted-preview.json`のハッシュに対して**成功した場合のみ**artifactをアップロード。署名手順が失敗したら受入不可。
+- この操作は紙面とレビュー用証拠を作るだけ。原典の意味的真偽・新聞の発行・`publication.json`の本番receiptを証明しない。
 
-artifact（7日）:
-- `recovery-live-status-<run>-<attempt>`: 現行mainの公開号を実GETで再検証。今日の朝刊欠落と、夕刊の要編集判断を区別。スケジュールの稼働はこのscriptで調べない。
-- `unpublished-recovery-preview-<run>-<attempt>`: packetがある場合のみ。README.txt、preview.json、candidate-files.json、site/。`publicationAuthorized=false` / `editorialReviewRequired=true`。site/publication.jsonは仮想buildのreceiptで、本番公開証明ではない。
+**注意：** PR #46未merge時の古い`Recovery preview (no publication)` / `unpublished-recovery-preview-*` artifactは**過去の候補生成テスト**にすぎない。現在の`Recovery implementation checks (not publication)`は、PR-headの合成テスト用。`recovery-packets/**`で起動せず、packet混入を拒否する。`recovery-live-status-*`はPR側コードで書かれた補助情報なので、**独立したtrusted証拠ではない**。古い手順を流用してはいけない。
 
+## 3. ZIP/HTMLを開く前に署名と実行元を独立確認
 
-### ローカルサーバー不要の見た目レビュー
+**最優先はGitHubが署名したワークフロー身元。自己申告の`source:"trusted-main-pull-request-target"`やartifact名・JSON間の一致だけでは出所証明にならない。**
 
-実記事packetを入れてpreview workflowが成功すると、通常のartifactに以下が追加される。
-
-- **offline-review.html**：号の実HTMLと記事本文を1ファイルにまとめ、現行サイトのCSSを埋め込んだ**オフライン紙面**。ZIPを展開してファイルをダブルクリックするだけでブラウザ確認できる。Windows / Node / ローカルHTTPサーバー不要。
-- **offline-review.json**：対象slug、base SHA、プレビューdigest、記事本数、単一HTMLのSHA-256、publicationAuthorized:false。受入時にCIログと照合する。
-
-このファイルは既存レンダラーが生成した号ページと記事ページから生成し、CSSだけをインライン化する。JavaScriptを除去し、CSPで通信・スクリプトを禁止する。記事見出し・レイアウトと出典リンクの描画確認に使い、動的な天気・検索・切替機能の動作証明にはしない。サイト内ナビゲーションはローカル紙面内に限定し、外部の公式出典リンクはクリックすると別サイトへ移動するので閲覧時に確認する。
-
-ブラウザで開くための手順：
-1. **Recovery preview (no publication)** の成功したrunから unpublished-recovery-preview 成果物をダウンロード。
-2. ZIPを展開し、**offline-review.html** をChrome等で開く。CSSや文章はインラインで表示される。
-3. 「未公開・編集確認用」表示と号・記事・出典・掲載時刻を確認。offline-review.json のdigest/SHAを同一artifact内のpreview.jsonと照合。
-
-GitHubリポジトリは公開のため、packetや成果物を**秘密のURLやアクセス制御された非公開データとはみなさない**。ここでの「未公開」は本番Pagesで発行されていない意味。packetが入ったテストPRは公開前承認に使わず、証拠を保存したらクローズしてmergeしない。単一HTMLも「published」ではなく、独立レビュー待ちの候補である。
-
-packetなしのCIは合成朝刊5本・夕刊1〜5本のリハーサルと既存サイトread-only確認だけ。実ニュース生成、実日刊PR、スケジュール再開、公開完了を主張しない。
-
-ローカルの正常な別環境でも利用可:
+1. GitHub Actionsのrun画面で、`event=pull_request_target`、ワークフロー`.github/workflows/trusted-recovery-preview.yml`、成功した**attest/upload** step、run ID/attempt、GitHub-ownedの検証情報を確認する。`skipped`、PR-headだけの`build`、旧候補ワークフローの成功を合格と読まない。
+2. artifactを取得し、ZIPを展開。`offline-review.html`と`trusted-preview.json`の署名を**各ファイル単体で**検証する（GitHub CLI認証と`gh attestation`が必要）。
 
 ```sh
-# fresh exact main checkoutで。outputはcheckoutの外に、新規directoryとして置く。
-node /path/to/recovery-branch/scripts/recovery-preview.mjs /path/to/packet.json /path/to/unpublished-output
-node /path/to/recovery-branch/scripts/recovery-status.mjs /path/to/new-status.json
+gh attestation verify ./offline-review.html --repo hm2236/jamio-news --signer-workflow hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml --source-ref refs/heads/main
+gh attestation verify ./trusted-preview.json --repo hm2236/jamio-news --signer-workflow hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml --source-ref refs/heads/main
 ```
 
-## trusted main で実行するpacket専用プレビュー（導入後）
+3. `GET /repos/hm2236/jamio-news/actions/runs/<run-id>`を**GitHub APIから直接**確認。`event`、`path`、`run_attempt`、`conclusion=success`およびrunへのartifact所属を突合する。runの`head_sha`だけでは`pull_request_target`の実行元を証明できない。
+4. `GET /repos/hm2236/jamio-news/pulls/<PR>`で`base.ref=main`、exact head、base SHAおよび差分がpacket1個だけであることを照合。PR close後にも確認できる。必要ならtrusted mainのcheckoutログと`JAMIO_TRUSTED_PREVIEW`行のSHA/digestを照合する。
+5. `offline-review.json`の単体HTML SHA256と、実ファイルのハッシュが一致し、`trusted-preview.json`の`offlineSha256`/base/head/packet/digest・`preview.json`の内容にも矛盾がないことを確認する。
+6. `offline-review.html`をChromeで開き、**未公開・編集確認用**表示、見出し、本文、URL、出典、JST時刻、PC/スマホ折返しを編集者が確認する。CSSは埋込み、JS除去、CSP通信禁止。ただし公式出典リンクを実際にクリックすれば外部に遷移する。
 
-従来の `Recovery implementation checks` は **pull_request** から動く基盤PRの合成テスト／read-only状態確認用で、PR側コードを実行するため **独立した原稿承認証拠ではない**。packet-only PRを起動条件から外した。歴史的な10/8実記事プレビュー成果物は有効なリハーサル証拠だが、その自動検証自体を信頼済み刊行ゲートとして扱わない。
+**Attestationが見つからない・検証できない・違うrepo/workflow/refから署名されている場合は**、原稿がどんなに良くてもレビュー受入を**停止**する。GitHubの実行receiptと編集判断は別。成果物は7日保持だが、`expiresAt`と当日のJST日付を越えたpacketは発行できない。後日再生成する場合は新しいJST対象から。
 
-このPRが人間承認とmain保護の通常mergeを経て入った**後**、新設の `Trusted recovery preview (unpublished)` が **pull_request_target** の信頼済みmain workflowとして `recovery-packets/**` を検知する。
+## 4. 出版用daily PRと公開の承認
 
-- baseの **exact SHA** だけをcheckoutし、`scripts/recovery-trusted-pr.mjs` / 検証器 / build / offline export は **そのbaseからのみ実行**。PR側コードをcheckout・実行しない。GitHub tokenはcontents:read、persist-credentials:false。fork PRは拒否、秘密・書込・deployなし。
-- event/現在PR/mainのSHA、同repo・open・recovery branch、1個だけのpacket JSON追加、1コミット・親がexact base、regular file(mode100644)、1MiB上限、base/slug一致を先に検証。PRを偽装してheadの検証器やworkflowを変更すると、packet-only条件で拒否。
-- main・同日daily branch・open daily PRの**実API照合を前後に実行**。JST date/未来時刻、現行schema、既刊digest、ビルド、offline-previewはmainの正本コードで検証。最後の衝突で失敗したら生成outputを削除。
-- 成功時のみ `trusted-unpublished-review-<run>-<attempt>` artifact と `trusted-preview.json` を保存。base/head SHA、packet SHA256、候補digest、offline HTML SHA256、`publicationAuthorized:false`、`editorialReviewRequired:true` を含む。これは trusted source の **プレビュー実行証拠**であって、記事の意味的真偽・出版・公開receiptは証明しない。
-- 別の安全用 [PR #49](https://github.com/hm2236/jamio-news/pull/49) がmainへ導入されるまでは、packet-only PRを非日刊ガードで機械的にmerge拒否できない。**この2つの復旧PRはそれぞれDraftで未マージ**。packetテストPRは手動でも絶対にmergeせず、成果物確認後クローズする。
-- 導入前のこの新workflowはmainに存在しないため `pull_request_target` の実走は **未実証**。PR CIの成功は将来mainでの実動作成功と同一視しない。導入後の当日packet-only PRでexact-runとartifactを検証する。もし信頼済みworkflowが起動しなければ、旧pull_request側へ戻して安全ゲートを迂回しない。
+レビュー済み原稿があっても、packet-only PRは**trusted`daily-guard`で意図的にFAILする**（#49保護）。この失敗を無視してpacket PRをmergeしてはいけない。証拠を記録して**未マージclose**。
 
-## 明朝のwriter試験と既知の限界
+1. 別の`daily/YYYY-MM-DD-morning`等のbranchを**新fresh main**から作成。原稿/号ファイルだけをwrite-onceで追加し、各コミットに同一の`Candidate-Attempt`トレーラー、号を最終コミットのimmutable sealとする。失敗したpartial branchは修正・上書き・force-pushせずSTOP。
+2. 正確なhead/baseのtrusted`daily-guard`と`build`を確認。CI成功でも自動公開権限ではない。ユーザーの内容確認と明示した承認後に**通常merge**だけを行う。
+3. merged exact-main Pages/HTML/digest/slug/variant/URL/publication.json receiptを照合して初めて`published`。別SHAの過去receiptで代用しない。朝刊がまだ発行できていない日は、夕刊のdaily PRを作らず記事調査・見送り判断だけにする。
+4. notifier/lease/outbox/連続稼働acceptanceは別ゲート。恒常運用をLLMの無制限な自動判断に依存させない。
 
-対話ChatGPTからのGitHub Contents APIによる隔離・非日刊 [PR #50](https://github.com/hm2236/jamio-news/pull/50) では、2コミットの1file/create-only、正しい親子関係、同じ最終Candidate-Attempt trailerの保持、CI成功を実証した。**試験PRはclosed/unmerged**。予定タスク側の権限や無人実行はそれによって保証されない。06:00 JSTの初回試験では本物の5本・実際のsource checked・最後のedition sealを要求し、partial失敗はfail-closedで停止。朝刊が未公開なら夕刊は調査のみで候補PRを書き始めない。
+## 5. このPRのreleaseと残存検証
 
-## #45の位置づけと再開判断
-
-#45のtrusted original-event enrichmentは、producerが提出するuntrusted URLをtrusted collector artifactへ安全に昇格する無人ingress用の課題。index-only collectorをevaluateDraftへ通すために検証を緩めない。本復旧ではenrich/evaluate/collector/ingress/比較候補を変更しない。人間が原典を読み、現行publishing契約とtrusted daily guardを使う経路の必須要件ではない。
-
-再開する前にユーザーが決める事項:
-- 既存予定タスクはDraft-onlyで再有効化済み。10/9の実行履歴・必要権限・原稿とGitHubへの接続を確認し、重複登録しない。
-- 最初は人間承認の刊行で復帰するか、別の無人接続設計を承認するか。
-- 実際の記事の原典レビューを終えた日刊PRのmerge/公開承認。
-
-復旧で原稿作成・プレビュー・CIまで準備しても、これらの承認は推測しない。17:00夕刊判断は現行方針を維持し、毎日夕刊必須へ仕様変更しない。
+- Claude Code / Opus 5.5 が[PR #46 head a32964b の独立レビュー](https://github.com/hm2236/jamio-news/pull/46#pullrequestreview-5456457355)を実施。P2-1 artifact出所、P2-2 `$`置換、P2-3旧文書、P2-4匿名API、P3を報告。作成者はP2修正・追加テスト・exact-head CIまで担当し、**修正後の新SHAをClaudeに再レビュー**してからmainへ通常mergeする。人間のGitHub ApprovalとClaudeのCOMMENTは異なる。
+- #49のmainへの適用と[PR #51](https://github.com/hm2236/jamio-news/pull/51)の拒否テストは完了。#46 merge後に、**新main当日JST**の使い捨てpacket-only Draft PRで真の`pull_request_target`実行、OIDC署名、HTML/receiptの独立検証を必ず再試験する。CIでの合成テストはその代替にならない。
+- `required check`同名ジョブによる代替の可否は未検証仮説。sandbox repoでのみ検証し、production rulesetを直接弱めたり実験でメインに偽ジョブを入れたりしない。拒否ガードの本番受入を自己申告やPR-head statusだけで代用しない。
