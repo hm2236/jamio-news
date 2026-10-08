@@ -72,6 +72,7 @@ function fixture(t) {
 
 test('trusted main reads a one-commit packet-only PR as data and exports verified preview',async t=>{
   const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]); // trusted base checkout, head read only as git object
   const validated=validateTrustedPacketCommit(f.root,f.event);
   assert.equal(validated.baseSha,f.baseSha);
   assert.equal(validated.headSha,f.headSha);
@@ -95,11 +96,14 @@ test('trusted main rejects extra files, multi-commit packet branches and modifie
   const extra=fixture(t);
   extra.write('scripts/untrusted-helper.mjs','throw new Error("must not execute");\n');
   extra.event.pull_request.head.sha=extra.commit('Unsafe extra script');
+  extra.git(['checkout','--detach',extra.baseSha]);
   assert.throws(()=>validateTrustedPacketCommit(extra.root,extra.event),/one add-only commit/);
   const wrong=fixture(t);
+  wrong.git(['checkout','--detach',wrong.baseSha]);
   wrong.event.pull_request.base.sha='0'.repeat(40);
   assert.throws(()=>validateTrustedPacketCommit(wrong.root,wrong.event),/checkout SHA/);
   const fork=fixture(t);
+  fork.git(['checkout','--detach',fork.baseSha]);
   fork.event.pull_request.head.repo.full_name='attacker/fork';
   assert.throws(()=>validateTrustedPacketCommit(fork.root,fork.event),/same-repository/);
 });
@@ -110,6 +114,7 @@ test('trusted main rejects payload/file identity differences and non regular pac
   const reseal=f=>{
     f.git(['reset','--soft',f.baseSha]);
     f.event.pull_request.head.sha=f.commit('One-file malicious data candidate');
+    f.git(['checkout','--detach',f.baseSha]);
   };
   const bad=fixture(t);
   bad.packet.baseSha='f'.repeat(40);
@@ -131,6 +136,7 @@ test('trusted main rejects payload/file identity differences and non regular pac
 
 test('trusted preview discards all output if main advances during final collision check',async t=>{
   const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]);
   await assert.rejects(
     trustedPreview(f.root,f.event,f.output,{request:f.mock(true),now}),/Main changed/);
   assert.equal(fs.existsSync(f.output),false);
@@ -139,6 +145,7 @@ test('trusted preview discards all output if main advances during final collisio
 
 test('trusted preview fails closed on daily branch collision',async t=>{
   const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]);
   const request=async url=>{
     if(url.endsWith('/git/ref/heads/main'))return new Response(JSON.stringify({object:{sha:f.baseSha}}));
     if(url.endsWith('/pulls/91'))return new Response(JSON.stringify({
