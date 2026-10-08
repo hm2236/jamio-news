@@ -62,6 +62,23 @@ artifact（7日）:
 - `recovery-live-status-<run>-<attempt>`: 現行mainの公開号を実GETで再検証。今日の朝刊欠落と、夕刊の要編集判断を区別。スケジュールの稼働はこのscriptで調べない。
 - `unpublished-recovery-preview-<run>-<attempt>`: packetがある場合のみ。README.txt、preview.json、candidate-files.json、site/。`publicationAuthorized=false` / `editorialReviewRequired=true`。site/publication.jsonは仮想buildのreceiptで、本番公開証明ではない。
 
+
+### ローカルサーバー不要の見た目レビュー
+
+実記事packetを入れてpreview workflowが成功すると、通常のartifactに以下が追加される。
+
+- **offline-review.html**：号の実HTMLと記事本文を1ファイルにまとめ、現行サイトのCSSを埋め込んだ**オフライン紙面**。ZIPを展開してファイルをダブルクリックするだけでブラウザ確認できる。Windows / Node / ローカルHTTPサーバー不要。
+- **offline-review.json**：対象slug、base SHA、プレビューdigest、記事本数、単一HTMLのSHA-256、publicationAuthorized:false。受入時にCIログと照合する。
+
+このファイルは既存レンダラーが生成した号ページと記事ページから生成し、CSSだけをインライン化する。JavaScriptを除去し、CSPで通信・スクリプトを禁止する。記事見出し・レイアウトと出典リンクの描画確認に使い、動的な天気・検索・切替機能の動作証明にはしない。サイト内ナビゲーションはローカル紙面内に限定し、外部の公式出典リンクはクリックすると別サイトへ移動するので閲覧時に確認する。
+
+ブラウザで開くための手順：
+1. **Recovery preview (no publication)** の成功したrunから unpublished-recovery-preview 成果物をダウンロード。
+2. ZIPを展開し、**offline-review.html** をChrome等で開く。CSSや文章はインラインで表示される。
+3. 「未公開・編集確認用」表示と号・記事・出典・掲載時刻を確認。offline-review.json のdigest/SHAを同一artifact内のpreview.jsonと照合。
+
+GitHubリポジトリは公開のため、packetや成果物を**秘密のURLやアクセス制御された非公開データとはみなさない**。ここでの「未公開」は本番Pagesで発行されていない意味。packetが入ったテストPRは公開前承認に使わず、証拠を保存したらクローズしてmergeしない。単一HTMLも「published」ではなく、独立レビュー待ちの候補である。
+
 packetなしのCIは合成朝刊5本・夕刊1〜5本のリハーサルと既存サイトread-only確認だけ。実ニュース生成、実日刊PR、スケジュール再開、公開完了を主張しない。
 
 ローカルの正常な別環境でも利用可:
