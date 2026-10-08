@@ -103,7 +103,7 @@ export async function liveContext(checkout, runId, options = {}) {
   const repository = loadRepository(checkout);
   const prior = repository.editions.filter(e=>e.kind==='daily' && Date.parse(e.published)<Date.parse(run.created_at)).sort((a,b)=>Date.parse(b.published)-Date.parse(a.published))[0];
   const context = createContext({runId:run.id,attempt:run.run_attempt,createdAt:run.created_at,baseSha:head,windowStart:prior?.published || jst(Date.parse(run.created_at)-86400000)});
-  fence(context,context);
+  fence(context,context,options.now?.()); // Injectable clock for detached ingress tests; defaults to now.
   return context;
 }
 export async function shadow(checkout, context, {get = githubJSON, collect = collectSources, confirm = confirmPublication, now = () => new Date()} = {}) {

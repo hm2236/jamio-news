@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "mode": "shadow",
+  "repository": "hm2236/jamio-news",
+  "inboxIssue": 37,
+  "producerActorId": 42599072,
+  "producerAssociation": "OWNER",
+  "variant": "morning",
+  "articleCount": 5,
+  "collector": {
+    "workflow": ".github/workflows/autonomous-shadow.yml",
+    "events": ["schedule", "workflow_dispatch"],
+    "artifactPrefix": "morning-shadow-",
+    "maxArtifactBytes": 16777216,
+    "maxReportBytes": 33554432
+  },
+  "limits": {
+    "maxChunks": 40,
+    "maxPartsPerFile": 8,
+    "maxPartBytes": 65536,
+    "maxFileBytes": 262144,
+    "maxPackageBytes": 1048576,
+    "maxInboxPages": 10
+  }
+}
