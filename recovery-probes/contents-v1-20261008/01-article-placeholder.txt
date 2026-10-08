@@ -1,0 +1,3 @@
+NON-PUBLICATION PROBE ONLY
+Purpose: validate GitHub Contents API add-only commit and Candidate-Attempt trailer.
+No real article or user data.
