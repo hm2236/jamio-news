@@ -53,7 +53,8 @@ function fixture(t) {
   }};
   const mock=(changeAfterFirst=false) => {
     let mains=0;
-    return async url => {
+    return async (url,{headers}) => {
+      assert.equal(headers.Authorization,'Bearer fixture-readonly-api-token');
       const resource=url.split('/repos/hm2236/jamio-news')[1];
       if (resource==='/git/ref/heads/main') {
         mains++;
@@ -66,7 +67,12 @@ function fixture(t) {
       throw Error('Unexpected outbound request: '+resource);
     };
   };
-  return {root,temp,git,commit,write,baseSha,headSha,file,packet,event,mock,
+  const runContext={repository:'hm2236/jamio-news',eventName:'pull_request_target',
+    ref:'refs/heads/main',sha:baseSha,
+    workflowRef:'hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml@refs/heads/main',
+    workflowSha:baseSha,runId:'12345',runAttempt:'1'};
+  const options={runContext,token:'fixture-readonly-api-token'};
+  return {root,temp,git,commit,write,baseSha,headSha,file,packet,event,mock,runContext,options,
     output:path.join(temp,'preview')};
 }
 
@@ -78,7 +84,7 @@ test('trusted main reads a one-commit packet-only PR as data and exports verifie
   assert.equal(validated.headSha,f.headSha);
   assert.equal(validated.slug,slug);
   assert.match(validated.packetSha256,/^[a-f0-9]{64}$/);
-  const result=await trustedPreview(f.root,f.event,f.output,{request:f.mock(),now});
+  const result=await trustedPreview(f.root,f.event,f.output,{...f.options,request:f.mock(),now});
   assert.equal(result.status,'trusted-preview-ready');
   assert.equal(result.publicationAuthorized,false);
   assert.equal(result.editorialReviewRequired,true);
@@ -88,6 +94,12 @@ test('trusted main reads a one-commit packet-only PR as data and exports verifie
   assert.equal(receipt.packetSha256,validated.packetSha256);
   assert.equal(receipt.slug,slug);
   assert.equal(receipt.digest,result.digest);
+  assert.equal(receipt.eventName,'pull_request_target');
+  assert.equal(receipt.workflowSha,f.baseSha);
+  assert.equal(receipt.runId,'12345');
+  assert.equal(receipt.runAttempt,1);
+  assert.equal(receipt.attestationRequired,true);
+  assert.ok(Date.parse(receipt.expiresAt)>Date.parse(receipt.validatedAt));
   assert.equal(fs.existsSync(path.join(f.output,'offline-review.html')),true);
   assert.equal(f.git(['status','--porcelain']),'');
 });
@@ -124,9 +136,15 @@ test('trusted main rejects payload/file identity differences and non regular pac
 
   const badLink=fixture(t);
   badLink.git(['rm',badLink.file]);
-  fs.mkdirSync(path.dirname(path.join(badLink.root,badLink.file)),{recursive:true});
-  fs.symlinkSync('../site.config.json',path.join(badLink.root,badLink.file));
-  reseal(badLink);
+  const symlinkBlob=execFileSync('git',['hash-object','-w','--stdin'],{
+    cwd:badLink.root,encoding:'utf8',input:'../site.config.json'
+  }).trim();
+  badLink.git(['update-index','--add','--cacheinfo','120000,'+symlinkBlob+',''+badLink.file]);
+  badLink.git(['reset','--soft',badLink.baseSha]);
+  badLink.git(['-c','user.name=Fixture','-c','user.email=fixture@example.test',
+    'commit','-m','One-file git-index symlink candidate']);
+  badLink.event.pull_request.head.sha=badLink.git(['rev-parse','HEAD']);
+  badLink.git(['checkout','--detach',badLink.baseSha]);
   assert.throws(()=>validateTrustedPacketCommit(badLink.root,badLink.event),/regular file/);
 
   const outside=fixture(t);
@@ -139,7 +157,7 @@ test('trusted preview discards all output if main advances during final collisio
   const f=fixture(t);
   f.git(['checkout','--detach',f.baseSha]);
   await assert.rejects(
-    trustedPreview(f.root,f.event,f.output,{request:f.mock(true),now}),/Main changed/);
+    trustedPreview(f.root,f.event,f.output,{...f.options,request:f.mock(true),now}),/Main changed/);
   assert.equal(fs.existsSync(f.output),false);
   assert.equal(f.git(['status','--porcelain']),'');
 });
@@ -152,9 +170,20 @@ test('trusted preview drops output if midnight JST arrives after final live chec
     ?new Date('2026-10-09T23:59:58+09:00')
     :new Date('2026-10-10T00:00:01+09:00');
   await assert.rejects(
-    trustedPreview(f.root,f.event,f.output,{request:f.mock(),now:clock}),/Stale/);
+    trustedPreview(f.root,f.event,f.output,{...f.options,request:f.mock(),now:clock}),/Stale/);
   assert.equal(fs.existsSync(f.output),false);
   assert.equal(f.git(['status','--porcelain']),'');
+});
+
+test('trusted run identity is exact-main only, and unauthenticated fetches are rejected',async t=>{
+  const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]);
+  const wrong={...f.runContext,workflowRef:'hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml@refs/heads/recovery/fake'};
+  await assert.rejects(trustedPreview(f.root,f.event,f.output,{
+    ...f.options,runContext:wrong,request:f.mock(),now}),/workflow identity mismatch/);
+  await assert.rejects(trustedPreview(f.root,f.event,f.output,{
+    ...f.options,token:'',request:f.mock(),now}),/token unavailable/);
+  assert.equal(fs.existsSync(f.output),false);
 });
 
 test('trusted preview fails closed on daily branch collision',async t=>{
@@ -168,6 +197,6 @@ test('trusted preview fails closed on daily branch collision',async t=>{
     if(url.includes('/git/ref/heads/daily/'))return new Response(JSON.stringify({object:{sha:'f'.repeat(40)}}));
     return new Response('[]');
   };
-  await assert.rejects(trustedPreview(f.root,f.event,f.output,{request,now}),/daily branch/);
+  await assert.rejects(trustedPreview(f.root,f.event,f.output,{...f.options,request,now}),/daily branch/);
   assert.equal(fs.existsSync(f.output),false);
 });
