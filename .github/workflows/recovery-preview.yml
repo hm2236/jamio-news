@@ -1,0 +1,64 @@
+name: Recovery implementation checks (not publication)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/recovery-preview.yml'
+      - 'scripts/recovery-preview.mjs'
+      - 'scripts/recovery-offline-review.mjs'
+      - 'scripts/recovery-trusted-pr.mjs'
+      - '.github/workflows/trusted-recovery-preview.yml'
+      - 'scripts/recovery-status.mjs'
+      - 'test/recovery-preview.test.mjs'
+      - 'test/recovery-trusted-pr.test.mjs'
+      - 'docs/operations-recovery.md'
+permissions:
+  contents: read
+concurrency:
+  group: recovery-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  recovery-preview:
+    if: github.repository == 'hm2236/jamio-news' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: tooling
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          path: base
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Execute morning and evening recovery rehearsal
+        working-directory: tooling
+        run: |
+          node --version
+          node --test test/recovery-preview.test.mjs
+          git diff --check
+          test -z "$(git status --porcelain)"
+      - name: Read exact-main live morning and evening publication proofs
+        working-directory: base
+        run: node ../tooling/scripts/recovery-status.mjs "$RUNNER_TEMP/recovery-live-status.json"
+      - name: Refuse untrusted packet execution in candidate-owned workflow
+        working-directory: tooling
+        run: |
+          if [ -e recovery-packets ]; then
+            echo 'Editorial packet is accepted only by the main-controlled Trusted recovery preview workflow.' >&2
+            exit 1
+          fi
+          echo 'No packet; this run is an infrastructure/synthetic rehearsal only.'
+      - name: Retain read-only status evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: recovery-live-status-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-live-status.json
+          retention-days: 7
+          if-no-files-found: warn
