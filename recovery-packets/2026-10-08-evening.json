@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "baseSha": "258b92db13fdfc74259fb0550e7d2be883411343",
+  "package": {
+    "date": "2026-10-08",
+    "edition": {
+      "slug": "2026-10-08-evening",
+      "date": "2026-10-08",
+      "variant": "evening",
+      "priceKeys": [],
+      "title": "じゃみお夕刊 2026-10-08（未公開復旧リハーサル）",
+      "kind": "daily",
+      "published": "2026-10-08T19:08:16+09:00",
+      "top5": [
+        "2026-10-08-evening-openai-gpt6-intelligent-ui",
+        "2026-10-08-evening-anthropic-claude-haiku-55",
+        "2026-10-08-evening-github-copilot-sandbox-ga"
+      ],
+      "hero": "2026-10-08-evening-openai-gpt6-intelligent-ui",
+      "articles": [
+        "2026-10-08-evening-openai-gpt6-intelligent-ui",
+        "2026-10-08-evening-anthropic-claude-haiku-55",
+        "2026-10-08-evening-github-copilot-sandbox-ga"
+      ],
+      "deals": [],
+      "production": {
+        "contractVersion": 1,
+        "x": {
+          "status": "unavailable",
+          "note": "今回はXを閲覧していない。OpenAI・Anthropic・GitHub公式発表を一次資料として確認した。"
+        }
+      },
+      "body": "\n# 2026年10月8日 夕刊・未公開リハーサル\n\n10月7日に発表されたAI・開発支援の重要更新を原典で確認した3本。公開承認前の実記事packet検証に限定した版であり、正式な夕刊発行判断ではない。"
+    },
+    "articles": [
+      {
+        "slug": "2026-10-08-evening-openai-gpt6-intelligent-ui",
+        "title": "OpenAI、GPT-6とIntelligent UIをChatGPTで段階展開",
+        "summary": "10月7日の公式発表。質問に応じて図解や操作可能なUIを組み込む機能を導入。今回の更新はCodex/Workのモデル切り替えではない。",
+        "category": "ai",
+        "tags": [
+          "OpenAI",
+          "GPT-6",
+          "ChatGPT"
+        ],
+        "status": "verified",
+        "kind": "news",
+        "published": "2026-10-08T19:08:10+09:00",
+        "verificationNote": "OpenAI公式の2026年10月7日付発表で確認。段階展開であり個々のアカウントへの提供完了は未確認。Codex/Workのモデルは本発表の変更対象外。",
+        "sources": [
+          {
+            "title": "GPT-6 and Intelligent UI for everyone",
+            "type": "official",
+            "url": "https://openai.com/index/gpt-6-for-everyone/",
+            "checked": "2026-10-08T19:08:00+09:00"
+          }
+        ],
+        "body": "\n# GPT-6とIntelligent UI\n\nOpenAIは10月7日、ChatGPTにGPT-6とIntelligent UIを段階展開すると発表した。質問に応じて図や比較表、ボタン、フォームなどの操作可能な表示を組み合わせる。Plus、Pro、Business、Enterprise向けから始まり、FreeとGoには翌日から展開を広げる予定と案内した。\n\n## じゃみおへの影響\n\n学習教材やPC構成比較を会話画面の中で扱いやすくなる。ただし**WorkとCodexのモデルはこの発表では変更されない**と明記されており、WindowsのCodexサンドボックス不具合を解消する発表ではない。"
+      },
+      {
+        "slug": "2026-10-08-evening-anthropic-claude-haiku-55",
+        "title": "Anthropic、低コストのClaude Haiku 5.5を発表",
+        "summary": "Anthropicが10月7日、高頻度の要約・分類・補助エージェント向けHaiku 5.5を公表。Haiku 4.5比で平均約75%安いと説明している。",
+        "category": "ai",
+        "tags": [
+          "Anthropic",
+          "Claude",
+          "Haiku"
+        ],
+        "status": "verified",
+        "kind": "news",
+        "published": "2026-10-08T19:08:10+09:00",
+        "verificationNote": "2026年10月7日付Anthropic公式発表で確認。約75%のコスト差は同社公表の平均値であり第三者実測ではない。",
+        "sources": [
+          {
+            "title": "Claude Haiku 5.5",
+            "type": "official",
+            "url": "https://www.anthropic.com/claude-haiku-5-5",
+            "checked": "2026-10-08T19:08:00+09:00"
+          }
+        ],
+        "body": "\n# 小型モデルの選択肢が増加\n\nAnthropicは10月7日、Claude Haiku 5.5を発表した。要約、コンテキスト圧縮、分類、データベース照会などの頻度が高い作業や、上位モデルと組み合わせるサブエージェント用途を挙げている。モデルIDは `claude-haiku-5-5`。\n\n公式発表ではHaiku 4.5との比較で、平均実行コストが約75%低いとしている。独立検証の結果ではないため、利用枠・速度・品質は目的のタスクで別途測る必要がある。\n\n## じゃみおへの影響\n\n無人開発体制で定型的な要約・調査を軽いモデルに分担する案の検討材料になる。"
+      },
+      {
+        "slug": "2026-10-08-evening-github-copilot-sandbox-ga",
+        "title": "GitHub Copilotのローカルサンドボックスが正式提供",
+        "summary": "GitHubは10月7日、Copilot CLI・アプリ・VS Code Agent Hostでローカルサンドボックスを正式提供。ファイルやネットワークへのアクセスを制限する仕組み。",
+        "category": "ai",
+        "tags": [
+          "GitHub",
+          "Copilot",
+          "Sandbox"
+        ],
+        "status": "verified",
+        "kind": "news",
+        "published": "2026-10-08T19:08:10+09:00",
+        "verificationNote": "GitHub Changelog 2026年10月7日を直接確認。GitHub Copilot固有の機能であり、OpenAI CodexのWindowsサンドボックス障害を直すものではない。",
+        "sources": [
+          {
+            "title": "Local sandboxing for GitHub Copilot now generally available",
+            "type": "official",
+            "url": "https://github.blog/changelog/2026-10-07-local-sandboxing-for-github-copilot-now-generally-available/",
+            "checked": "2026-10-08T19:08:00+09:00"
+          }
+        ],
+        "body": "\n# エージェントの操作範囲を制限\n\nGitHubは10月7日、GitHub Copilot CLI、Copilotアプリ、VS CodeのAgent Hostセッションでローカルサンドボックスが一般提供になったと発表した。Microsoft eXecution Container（MXC）を利用し、Windows、macOS、Linuxでファイル、ネットワーク、資格情報へのアクセスを制限する。\n\n## じゃみおへの影響\n\nAIに実装を任せる際の権限境界として参考になる。ただし**GitHub CopilotとOpenAI Codexは別製品**であり、現在のCodex Windowsサンドボックスのファイル共有違反が解消したわけではない。"
+      }
+    ],
+    "priceObservations": []
+  }
+}
