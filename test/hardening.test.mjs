@@ -38,6 +38,31 @@ for (const kind of ['edition edit','article delete','article rename','price edit
   if(kind==='content add')f.addArticle();
   f.commit();assert.throws(()=>f.guard(),/protected publication/);
 });
+for (const scenario of ['add', 'delete', 'rename']) test('non-daily PR rejects ephemeral recovery packet ' + scenario,t=>{
+  const f=repository(t);
+  f.event.pull_request.head.ref='fix/infrastructure';
+  const packet='recovery-packets/2026-10-08-evening.json';
+  if (scenario === 'add') {
+    f.write(packet,'{"version":1}\n');
+  } else {
+    f.write(packet,'{"version":1}\n');
+    const original=f.commit('Base with packet');
+    f.event.pull_request.base.sha=original;
+    f.git(['update-ref','refs/remotes/origin/main',original]);
+    if (scenario === 'delete') f.git(['rm',packet]);
+    else f.git(['mv',packet,'recovery-packets/renamed.json']);
+  }
+  f.commit();
+  assert.throws(()=>f.guard(),/ephemeral recovery packet/);
+});
+test('non-daily infrastructure PR can change unrelated scripts without packet',t=>{
+  const f=repository(t);
+  f.event.pull_request.head.ref='fix/infrastructure';
+  f.write('scripts/unrelated.mjs','export const example=true;\n');
+  f.commit();
+  assert.equal(f.guard().status,'infrastructure-passed');
+});
+
 test('infrastructure PR passes without executing candidate code, even behind main or from a fork',t=>{
   const f=repository(t);f.event.pull_request.head.ref='fix/docs';f.event.pull_request.head.repo={full_name:'fixture/fork'};
   f.write('scripts/evil.mjs','throw new Error("never execute")');const head=f.commit();
