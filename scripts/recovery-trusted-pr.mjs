@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {previewPackage, MAX_PACKET_BYTES} from './recovery-preview.mjs';
 import {createOfflineReview} from './recovery-offline-review.mjs';
+import {validateFreshness} from './daily-pr.mjs';
 
 const SHA = /^[a-f0-9]{40}$/;
 const EDITION = /^\d{4}-\d{2}-\d{2}-(morning|evening)$/;
@@ -98,6 +99,9 @@ export async function trustedPreview(root, event, output, {request = fetch, now 
     created = true;
     const offline = createOfflineReview(output);
     await fence();
+    // Midnight rollover is checked AFTER the final live collision fence too.
+    validateFreshness('daily/' + ids.slug, ids.packet.package.edition,
+      ids.packet.package.articles, now());
     const result = {status:'trusted-preview-ready', source:'trusted-main-pull-request-target',
       baseSha: ids.baseSha, headSha: ids.headSha, pr: ids.number,
       slug: ids.slug, digest: receipt.digest, packetSha256: ids.packetSha256,
