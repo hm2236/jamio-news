@@ -93,6 +93,7 @@ test('trusted main reads a one-commit packet-only PR as data and exports verifie
   const receipt=JSON.parse(fs.readFileSync(path.join(f.output,'trusted-preview.json'),'utf8'));
   assert.equal(receipt.packetSha256,validated.packetSha256);
   assert.equal(receipt.slug,slug);
+  assert.equal(receipt.variant,'evening');
   assert.equal(receipt.digest,result.digest);
   assert.equal(receipt.eventName,'pull_request_target');
   assert.equal(receipt.workflowSha,f.baseSha);
@@ -100,6 +101,7 @@ test('trusted main reads a one-commit packet-only PR as data and exports verifie
   assert.equal(receipt.runAttempt,1);
   assert.equal(receipt.attestationRequired,true);
   assert.ok(Date.parse(receipt.expiresAt)>Date.parse(receipt.validatedAt));
+  assert.equal(receipt.expiresAt,day+'T15:00:00.000Z');
   assert.equal(fs.existsSync(path.join(f.output,'offline-review.html')),true);
   assert.equal(f.git(['status','--porcelain']),'');
 });
@@ -118,6 +120,36 @@ test('trusted main rejects extra files, multi-commit packet branches and modifie
   fork.git(['checkout','--detach',fork.baseSha]);
   fork.event.pull_request.head.repo.full_name='attacker/fork';
   assert.throws(()=>validateTrustedPacketCommit(fork.root,fork.event),/same-repository/);
+});
+
+test('signed preview expiry agrees with preview at 23:30 JST',async t=>{
+  const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]);
+  const result=await trustedPreview(f.root,f.event,f.output,{
+    ...f.options,request:f.mock(),now:()=>new Date(day+'T23:30:00+09:00')});
+  const preview=JSON.parse(fs.readFileSync(path.join(f.output,'preview.json'),'utf8'));
+  assert.equal(result.expiresAt,day+'T15:00:00.000Z');
+  assert.equal(result.expiresAt,preview.expiresAt);
+  assert.equal(result.validatedAt,day+'T14:30:00.000Z');
+});
+
+test('API transport, HTTP and malformed JSON fail closed with fixed classification',async t=>{
+  const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]);
+  for(const request of [
+    async()=>{throw new TypeError('secret https://token.example');},
+    async()=>{throw new DOMException('secret','TimeoutError');},
+    async()=>new Response('secret',{status:403}),
+    async()=>new Response('secret',{status:404}),
+    async()=>new Response('not JSON')
+  ]){
+    await assert.rejects(trustedPreview(f.root,f.event,f.output,{...f.options,request,now}),error=>{
+      assert.equal(error.message,'Trusted live GitHub API check unavailable');
+      assert.equal(classifyTrustedPreviewFailure(error),'api-unavailable');
+      return true;
+    });
+    assert.equal(fs.existsSync(f.output),false);
+  }
 });
 
 test('trusted main rejects payload/file identity differences and non regular packet mode',t=>{
@@ -237,7 +269,7 @@ test('trusted workflow stays pinned to main, signs HTML/receipt and never checks
   assert.match(y,/contents: read/);
   assert.match(y,/id-token: write/);
   assert.match(y,/attestations: write/);
-  assert.match(y,/artifact-metadata: write/);
+  assert.doesNotMatch(y,/artifact-metadata: write/);
   assert.match(y,/persist-credentials: false/);
   assert.match(y,/base\.sha == github\.sha/);
   assert.match(y,/subject-path:[\s\S]*offline-review\.html[\s\S]*trusted-preview\.json/);
@@ -245,6 +277,24 @@ test('trusted workflow stays pinned to main, signs HTML/receipt and never checks
   assert.doesNotMatch(y,/ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha/);
   assert.doesNotMatch(y,/actions\/checkout@v\d/);
   assert.doesNotMatch(y,/run:\s*[^\n]*\$\{\{\s*github\.event\.pull_request\.head/);
+  const [render,sign]=y.split('  attest-recovery-preview:');
+  assert.match(y,/^permissions: \{\}$/m);
+  assert.doesNotMatch(render,/id-token:|attestations:|\bwrite\b/);
+  assert.match(sign,/needs: trusted-recovery-preview/);
+  assert.doesNotMatch(sign,/uses: actions\/(checkout|setup-node)@|\brun:/);
+  assert.match(sign,/create-storage-record: false/);
+  assert.match(sign,/name: unsigned-recovery-render-\$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}/);
+  assert.ok(sign.indexOf('actions/download-artifact@')<sign.indexOf('actions/attest@'));
+  assert.ok(sign.indexOf('actions/attest@')<sign.indexOf('actions/upload-artifact@'));
+});
+
+test('every action in both recovery workflows is pinned to a full commit SHA',()=>{
+  for(const file of ['trusted-recovery-preview.yml','recovery-preview.yml']){
+    const y=fs.readFileSync(path.join(source,'.github/workflows',file),'utf8');
+    const uses=[...y.matchAll(/\buses:\s*(\S+)/g)].map(m=>m[1]);
+    assert.ok(uses.length>0);
+    for(const action of uses)assert.match(action,/^[\w.-]+\/[\w./-]+@[a-f0-9]{40}$/,action);
+  }
 });
 
 test('trusted preview incident reason codes never echo untrusted content',()=>{
@@ -254,6 +304,12 @@ test('trusted preview incident reason codes never echo untrusted content',()=>{
     [new Error('Main changed after preview event'),'stale-main'],
     [new Error('Recovery PR identity changed after preview event'),'pr-moved'],
     [new Error('Another daily branch already exists'),'daily-collision'],
+    [new Error('Another recovery packet PR already exists'),'recovery-collision'],
+    [new Error('Preview output already exists'),'output-exists'],
+    [new Error('Recovery PR file listing incomplete'),'listing-incomplete'],
+    [new Error('Recovery PR listing incomplete'),'listing-incomplete'],
+    [new Error('Recovery PR listing malformed'),'listing-incomplete'],
+    [new Error('Trusted source checkout SHA is not exact PR base'),'checkout-mismatch'],
     [new Error('Stale date JST rollover'),'jst-clock'],
     [new Error('Trusted live GitHub API check unavailable'),'api-unavailable'],
     [new Error('Trusted preview packet must be a regular file'),'packet-rejected'],

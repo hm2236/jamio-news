@@ -82,12 +82,16 @@ export function validateTrustedPacketCommit(root, event) {
 }
 async function fetchJSON(request, suffix, token, allow404 = false) {
   const url = 'https://api.github.com/repos/' + REPO + suffix;
-  const response = await request(url, {redirect: 'error', signal: AbortSignal.timeout(15000),
-    headers: {'Accept':'application/vnd.github+json', 'User-Agent':'jamio-news-trusted-preview',
-      'Authorization':'Bearer ' + token}});
-  if (allow404 && response.status === 404) return null;
-  if (!response.ok) throw new Error('Trusted live GitHub API check unavailable');
-  return response.json();
+  try {
+    const response = await request(url, {redirect: 'error', signal: AbortSignal.timeout(15000),
+      headers: {'Accept':'application/vnd.github+json', 'User-Agent':'jamio-news-trusted-preview',
+        'Authorization':'Bearer ' + token}});
+    if (allow404 && response.status === 404) return null;
+    if (!response.ok) throw new Error('API status rejected');
+    return await response.json();
+  } catch {
+    throw new Error('Trusted live GitHub API check unavailable');
+  }
 }
 export async function trustedPreview(root, event, output, {
   request = fetch, now = () => new Date(), runContext, token
@@ -143,14 +147,13 @@ export async function trustedPreview(root, event, output, {
     await fence();
     // Midnight rollover is checked AFTER the final live collision fence too.
     const completedAt = now();
-    validateFreshness('daily/' + ids.slug, ids.packet.package.edition,
+    const freshness = validateFreshness('daily/' + ids.slug, ids.packet.package.edition,
       ids.packet.package.articles, completedAt);
     const result = {status:'trusted-preview-ready', source:'trusted-main-pull-request-target',
       baseSha: ids.baseSha, headSha: ids.headSha, pr: ids.number,
-      slug: ids.slug, digest: receipt.digest, packetSha256: ids.packetSha256,
+      slug: ids.slug, variant: receipt.variant, digest: receipt.digest, packetSha256: ids.packetSha256,
       offlineSha256: offline.sha256, ...run,
-      validatedAt:completedAt.toISOString(),
-      expiresAt:new Date(completedAt.getTime() + 24 * 3600000).toISOString(),
+      ...freshness,
       attestationRequired:true,
       publicationAuthorized:false, editorialReviewRequired:true};
     fs.writeFileSync(path.join(output,'trusted-preview.json'),
@@ -166,9 +169,13 @@ export function classifyTrustedPreviewFailure(error) {
   const message = error instanceof Error ? error.message : '';
   if (/Trusted workflow identity mismatch/.test(message)) return 'workflow-identity';
   if (/read-only GitHub API token unavailable/.test(message)) return 'auth-unavailable';
+  if (/Trusted source checkout SHA is not exact PR base/i.test(message)) return 'checkout-mismatch';
+  if (/Recovery PR (file )?listing (incomplete|malformed)/i.test(message)) return 'listing-incomplete';
+  if (/Another recovery packet PR already exists/i.test(message)) return 'recovery-collision';
+  if (/Preview output already exists/i.test(message)) return 'output-exists';
   if (/Current main SHA has advanced|Main changed after preview|exact current main|Checkout does not match|source checkout changed/i.test(message)) return 'stale-main';
   if (/Recovery PR identity changed|same-repository recovery PR/i.test(message)) return 'pr-moved';
-  if (/Another daily branch|Another daily PR|Another recovery packet PR|already exists/i.test(message)) return 'daily-collision';
+  if (/Another daily branch|Another daily PR/i.test(message)) return 'daily-collision';
   if (/Stale|future|freshness|JST/i.test(message)) return 'jst-clock';
   if (/Trusted live GitHub API check unavailable|Current main cannot be read/i.test(message)) return 'api-unavailable';
   if (/JSON|packet|commit|blob|file|slug|mode|regular/i.test(message)) return 'packet-rejected';

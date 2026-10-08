@@ -4,17 +4,15 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'recovery-packets/**'
-permissions:
-  contents: read
-  pull-requests: read
-  id-token: write
-  attestations: write
-  artifact-metadata: write
+permissions: {}
 concurrency:
   group: trusted-recovery-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
   trusted-recovery-preview:
+    permissions:
+      contents: read
+      pull-requests: read
     # The PR is data only. No fork, non-main base, stale base SHA, or PR script.
     if: github.repository == 'hm2236/jamio-news' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main' && github.event.pull_request.base.sha == github.sha
     runs-on: ubuntu-latest
@@ -34,11 +32,34 @@ jobs:
           OUTPUT_DIR: ${{ runner.temp }}/trusted-unpublished-review
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/recovery-trusted-pr.mjs "$OUTPUT_DIR"
+      # This intermediate artifact is NOT signed editorial evidence.
+      - name: Transfer rendered files to isolated signing job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-recovery-render-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/trusted-unpublished-review/
+          retention-days: 1
+          if-no-files-found: error
+  attest-recovery-preview:
+    needs: trusted-recovery-preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      # Same-run immutable artifact, exact name; no candidate code or checkout.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unsigned-recovery-render-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/trusted-unpublished-review/
       # A self-written JSON receipt is NOT proof of source. Sign both byte-exact
       # files with the workflow identity in GitHub's OIDC-backed Sigstore.
       - name: Attest trusted editorial review artifact provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
+          create-storage-record: false
           subject-path: |
             ${{ runner.temp }}/trusted-unpublished-review/offline-review.html
             ${{ runner.temp }}/trusted-unpublished-review/trusted-preview.json

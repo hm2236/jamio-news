@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
-import {previewPackage, MAX_PACKET_BYTES} from '../scripts/recovery-preview.mjs';
+import {previewPackage, MAX_PACKET_BYTES, previewBuildEnvironment} from '../scripts/recovery-preview.mjs';
 import {createOfflineReview} from '../scripts/recovery-offline-review.mjs';
 import {loadRepository, canonical, editionDigest} from '../scripts/production.mjs';
 import {recoveryStatus} from '../scripts/recovery-status.mjs';
@@ -36,6 +36,23 @@ function fixture(t, variant = 'morning', count = variant === 'morning' ? 5 : 1) 
     options:{expectedBaseSha:baseSha,now:clock}};
 }
 function trackedBytes(f) { return f.git(['ls-files']).split('\n').map(p=>[p,fs.readFileSync(path.join(f.root,p)).toString('base64')]); }
+test('preview builder cannot inherit API, OIDC, Node injection or deployment configuration',()=>{
+  const baseSha='a'.repeat(40);
+  const env=previewBuildEnvironment({Path:'platform-path',SystemRoot:'platform-root',TEMP:'platform-temp',
+    GITHUB_SHA:'wrong',GITHUB_TOKEN:'secret',GH_TOKEN:'secret',ARBITRARY_SECRET:'secret',
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN:'secret',ACTIONS_ID_TOKEN_REQUEST_URL:'https://token.example',
+    NODE_OPTIONS:'--import ./attacker.mjs',NODE_PATH:'attacker',SITE_URL:'https://attacker.example'},baseSha);
+  assert.deepEqual(env,{Path:'platform-path',SystemRoot:'platform-root',TEMP:'platform-temp',GITHUB_SHA:baseSha});
+  const childEnv=previewBuildEnvironment({...process.env,
+    GITHUB_TOKEN:'fixture-secret',GH_TOKEN:'fixture-secret',ARBITRARY_SECRET:'fixture-secret',
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN:'fixture-secret',ACTIONS_ID_TOKEN_REQUEST_URL:'https://token.example',
+    NODE_OPTIONS:'--import ./attacker.mjs',NODE_PATH:'attacker',SITE_URL:'https://attacker.example'},baseSha);
+  const child=execFileSync(process.execPath,['-e','process.stdout.write(JSON.stringify(process.env))'],{env:childEnv,encoding:'utf8'});
+  const inherited=JSON.parse(child);
+  for(const key of ['GITHUB_TOKEN','GH_TOKEN','ARBITRARY_SECRET','ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+    'ACTIONS_ID_TOKEN_REQUEST_URL','NODE_OPTIONS','NODE_PATH','SITE_URL'])assert.equal(inherited[key],undefined);
+  assert.equal(inherited.GITHUB_SHA,baseSha);
+});
 test('morning 5 and evening 1-5 render previews through actual daily validation and build, preserving all source bytes',t=>{
   for(const [variant,count] of [['morning',5],...Array.from({length:5},(_,i)=>['evening',i+1])]){
     const f=fixture(t,variant,count), before=trackedBytes(f), repo=loadRepository(f.root);

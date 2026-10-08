@@ -11,6 +11,12 @@ export const MAX_PACKET_BYTES = 1024 * 1024;
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const digests = repo => Object.fromEntries(repo.editions.map(e => [e.slug, editionDigest(e, repo.articles, repo.prices)]));
 const gitHead = root => execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
+// The builder needs no API token, OIDC, runtime injection or site override.
+export function previewBuildEnvironment(env, baseSha) {
+  const allowed = new Set(['path','systemroot','windir','temp','tmp','tmpdir','lang','lc_all','tz']);
+  return {...Object.fromEntries(Object.entries(env).filter(([key]) => allowed.has(key.toLowerCase()))),
+    GITHUB_SHA:baseSha};
+}
 function checkPacket(packet, expectedBaseSha) {
   if (!packet || Object.keys(packet).sort().join(',') !== 'baseSha,package,version' || packet.version !== 1 ||
       !/^[a-f0-9]{40}$/.test(packet.baseSha || '') || packet.baseSha !== expectedBaseSha) throw new Error('Preview packet requires version 1 and the exact checkout base SHA');
@@ -49,7 +55,7 @@ export function previewPackage(root, packet, output, {expectedBaseSha, now = () 
     const validation = validateDailyChange(branch, changes, before, candidate);
     if (validation.digest !== plan.digest) throw new Error('Preview daily digest mismatch');
     execFileSync(process.execPath, [path.join(scratch, 'scripts/build.mjs')], {
-      cwd:scratch, env:{...process.env, GITHUB_SHA:expectedBaseSha}, stdio:'pipe', timeout:60000
+      cwd:scratch, env:previewBuildEnvironment(process.env, expectedBaseSha), stdio:'pipe', timeout:60000
     });
     const manifest = JSON.parse(fs.readFileSync(path.join(scratch, 'dist/publication.json'), 'utf8'));
     const entry = manifest.editions.find(e => e.slug === bundle.edition.slug);

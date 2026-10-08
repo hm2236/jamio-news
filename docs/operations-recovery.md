@@ -42,10 +42,13 @@ packet名: `recovery-packets/YYYY-MM-DD-morning.json` または `recovery-packet
 
 - 使う実行コード・schema・rendererは**exact protected main**からのみcheckoutし、PR headのcode/workflow/actionをcheckoutも実行もしない。同一repo/`main`へのopen recovery PR限定。fork、別base、stale/main headや失効日付は拒否。
 - headは`git show <exact-head>:<packet>` の単一JSON**データ**として読む。baseから単一親commit・新規packet1ファイルのみ・100644・サイズ上限・base/slug一致を確認。コード変更/複数commit/rename/symlink/削除は禁止。
-- 書き込み不能の`contents: read`と`pull-requests: read`の`GITHUB_TOKEN`をAPI読み取りに使用。`persist-credentials:false`、秘密やPR提供コードを一切実行しない。OIDC署名に限定した`id-token:write`、`attestations:write`、`artifact-metadata:write`は**記事・mainへの書き込み許可ではない**。
+- 描画jobは`contents: read`と`pull-requests: read`だけの`GITHUB_TOKEN`をAPI読み取りに使用。OIDC/書込権限なし、`persist-credentials:false`。build子プロセスはOS必須変数とexact `GITHUB_SHA`だけを受け取り、token・OIDC・`NODE_OPTIONS`・`SITE_URL`などを引き継がない。
+- 別の署名jobは描画成功後、同一run/attemptの固定名artifactを取得し、download→attest→uploadだけを行う。checkoutやpacket解釈・候補コードの実行はしない。署名jobだけに`contents:read`、`id-token:write`、`attestations:write`を付与。registryへpushせず`create-storage-record:false`のため`artifact-metadata:write`は不要。署名tokenは書き込み権限を持つが記事・mainの変更権限はない。
 - main/current PR/daily branch・PRと、同じslugの他のopen recovery packet PRのライブ照合を**生成前後**に実施。リストが100件に達して完全性が保証できない場合やAPI失敗時はfail-closed。最終JST日付・main前進・競合・403/404以外のHTTP/タイムアウトを含めfail-closed。出力を残す前にsource snapshotを再照合する。
 - scratchにだけ`planDraft`→`applyDraft`→`validateDailyChange`→`build`を行い、ソースcheckoutのtrackedファイルは変更しない。既刊digest/候補ファイル/slug/記事数を検証する。
-- 成功時に`trusted-unpublished-review-<run>-<attempt>` artifactの`offline-review.html`、`offline-review.json`、`preview.json`、`candidate-files.json`、`site/`、`trusted-preview.json`を生成。`trusted-preview.json`にはrun ID/attempt、workflow ref/SHA、event、base/head SHA、packet/HTML digest、作成時刻/有効期限、`publicationAuthorized:false`を記録する。
+- 成功時に`trusted-unpublished-review-<run>-<attempt>` artifactの`offline-review.html`、`offline-review.json`、`preview.json`、`candidate-files.json`、`site/`、`trusted-preview.json`を生成。`trusted-preview.json`にはrun ID/attempt、workflow ref/SHA、event、base/head SHA、slug/variant/edition digest、packet/HTML digest、作成時刻/有効期限、`publicationAuthorized:false`を記録する。有効期限は最終ライブ照合後の`validateFreshness`と同じ翌JST 00:00。
+- `unsigned-recovery-render-<run>-<attempt>`はjob間転送用の未署名artifact（保持1日）。署名jobが失敗しても残るため、**編集承認の証拠として受け付けない**。`site/publication.json`も仮想build receiptで、実公開receiptではない。
+- 署名/転送が失敗した場合は**Re-run all jobs**で描画から再実行し、当該attemptのライブ照合と新しい受領証を作る。`Re-run failed jobs`や署名jobだけの再実行はattemptが変わり、転送artifactが存在せずfail-closedになる。古いattemptのartifactを署名し直したり固定名を緩めたりせず、期限切れなら当日原稿から作り直す。
 - **GitHub ActionsによるOIDC署名Artifact Attestation**が紙面HTMLと`trusted-preview.json`のハッシュに対して**成功した場合のみ**artifactをアップロード。署名手順が失敗したら受入不可。
 - この操作は紙面とレビュー用証拠を作るだけ。原典の意味的真偽・新聞の発行・`publication.json`の本番receiptを証明しない。
 
@@ -56,17 +59,19 @@ packet名: `recovery-packets/YYYY-MM-DD-morning.json` または `recovery-packet
 **最優先はGitHubが署名したワークフロー身元。自己申告の`source:"trusted-main-pull-request-target"`やartifact名・JSON間の一致だけでは出所証明にならない。**
 
 1. GitHub Actionsのrun画面で、`event=pull_request_target`、ワークフロー`.github/workflows/trusted-recovery-preview.yml`、成功した**attest/upload** step、run ID/attempt、GitHub-ownedの検証情報を確認する。`skipped`、PR-headだけの`build`、旧候補ワークフローの成功を合格と読まない。
-2. artifactを取得し、ZIPを展開。`offline-review.html`と`trusted-preview.json`の署名を**各ファイル単体で**検証する（GitHub CLI認証と`gh attestation`が必要）。
+2. 最終署名済みartifactを取得し、ZIPを展開。`offline-review.html`と`trusted-preview.json`の署名を**各ファイル単体で**検証する（GitHub CLI認証と対応オプションを持つ`gh attestation`が必要）。下記`BASE_SHA`は未検証JSONから自動採用せず、対象runの当時のprotected main・checkoutログ・workflow SHAをGitHubから独立取得し、40文字SHAとして固定する。その値が署名検証後の`trusted-preview.baseSha`/`workflowSha`とも一致することを要求する。
 
 ```sh
-gh attestation verify ./offline-review.html --repo hm2236/jamio-news --signer-workflow hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml --source-ref refs/heads/main
-gh attestation verify ./trusted-preview.json --repo hm2236/jamio-news --signer-workflow hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml --source-ref refs/heads/main
+BASE_SHA='<GitHubから独立確認した40文字のpreview base SHA>'
+gh attestation verify ./offline-review.html --repo hm2236/jamio-news --cert-identity https://github.com/hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml@refs/heads/main --source-ref refs/heads/main --source-digest "$BASE_SHA" --signer-digest "$BASE_SHA" --deny-self-hosted-runners --format json > html-attestation-verified.json
+gh attestation verify ./trusted-preview.json --repo hm2236/jamio-news --cert-identity https://github.com/hm2236/jamio-news/.github/workflows/trusted-recovery-preview.yml@refs/heads/main --source-ref refs/heads/main --source-digest "$BASE_SHA" --signer-digest "$BASE_SHA" --deny-self-hosted-runners --format json > receipt-attestation-verified.json
 ```
 
-3. `GET /repos/hm2236/jamio-news/actions/runs/<run-id>`を**GitHub APIから直接**確認。`event`、`path`、`run_attempt`、`conclusion=success`およびrunへのartifact所属を突合する。runの`head_sha`だけでは`pull_request_target`の実行元を証明できない。
-4. `GET /repos/hm2236/jamio-news/pulls/<PR>`で`base.ref=main`、exact head、base SHAおよび差分がpacket1個だけであることを照合。PR close後にも確認できる。必要ならtrusted mainのcheckoutログと`JAMIO_TRUSTED_PREVIEW`行のSHA/digestを照合する。
-5. `offline-review.json`の単体HTML SHA256と、実ファイルのハッシュが一致し、`trusted-preview.json`の`offlineSha256`/base/head/packet/digest・`preview.json`の内容にも矛盾がないことを確認する。
-6. `offline-review.html`をChromeで開き、**未公開・編集確認用**表示、見出し、本文、URL、出典、JST時刻、PC/スマホ折返しを編集者が確認する。CSSは埋込み、JS除去、CSP通信禁止。ただし公式出典リンクを実際にクリックすれば外部に遷移する。
+3. 両コマンドのexit statusが0で、検証JSONに該当ファイルのverified attestationが存在することを確認する。各`verificationResult.signature.certificate`の証明書拡張から、`buildTrigger=pull_request_target`、GitHub-hosted runner、run invocation URIが`https://github.com/hm2236/jamio-news/actions/runs/<runId>/attempts/<runAttempt>`と完全一致することを確認する。フィールド欠落・不一致は停止。workflowが記述できる`statement.predicate`のtrigger/invocation一致だけで代用しない。両ファイルの署名元run/attemptは同一で、署名検証済み受領証の値とも一致させる。
+4. `GET /repos/hm2236/jamio-news/actions/runs/<run-id>/attempts/<attempt>`を**GitHub APIから直接**確認。`event`、`path`、`run_attempt`、`conclusion=success`、描画/署名jobの成功および最終artifactのrun所属を突合する。runの`head_sha`だけでは`pull_request_target`の実行元を証明できない。
+5. `GET /repos/hm2236/jamio-news/pulls/<PR>`で`base.ref=main`、exact head、base SHAおよび差分がpacket1個だけであることを照合。PR close後にも確認できる。trusted mainのcheckoutログと`JAMIO_TRUSTED_PREVIEW`行のSHA/digestを照合する。
+6. 実HTMLのSHA256が署名検証済み`trusted-preview.offlineSha256`と一致し、slug/variant/digestが`preview.json`とも一致することを確認する。`offline-review.json`や未署名の補助ファイルは署名済み受領証との整合確認に使うだけで、単独の証拠にはしない。
+7. `offline-review.html`をChromeで開き、**未公開・編集確認用**表示、見出し、本文、URL、出典、JST時刻、PC/スマホ折返しを編集者が確認する。CSSは埋込み、JS除去、CSP通信禁止。ただし公式出典リンクを実際にクリックすれば外部に遷移する。
 
 **Attestationが見つからない・検証できない・違うrepo/workflow/refから署名されている場合は**、原稿がどんなに良くてもレビュー受入を**停止**する。GitHubの実行receiptと編集判断は別。成果物は7日保持だが、`expiresAt`と当日のJST日付を越えたpacketは発行できない。後日再生成する場合は新しいJST対象から。
 
@@ -75,12 +80,17 @@ gh attestation verify ./trusted-preview.json --repo hm2236/jamio-news --signer-w
 レビュー済み原稿があっても、packet-only PRは**trusted`daily-guard`で意図的にFAILする**（#49保護）。この失敗を無視してpacket PRをmergeしてはいけない。証拠を記録して**未マージclose**。
 
 1. 別の`daily/YYYY-MM-DD-morning`等のbranchを**新fresh main**から作成。原稿/号ファイルだけをwrite-onceで追加し、各コミットに同一の`Candidate-Attempt`トレーラー、号を最終コミットのimmutable sealとする。失敗したpartial branchは修正・上書き・force-pushせずSTOP。
-2. 正確なhead/baseのtrusted`daily-guard`と`build`を確認。CI成功でも自動公開権限ではない。ユーザーの内容確認と明示した承認後に**通常merge**だけを行う。
-3. merged exact-main Pages/HTML/digest/slug/variant/URL/publication.json receiptを照合して初めて`published`。別SHAの過去receiptで代用しない。朝刊がまだ発行できていない日は、夕刊のdaily PRを作らず記事調査・見送り判断だけにする。
-4. notifier/lease/outbox/連続稼働acceptanceは別ゲート。恒常運用をLLMの無制限な自動判断に依存させない。
+2. GitHubからdaily PRのfresh head/baseと保護ルールを取得し、**そのexact head/base**のtrusted main-controlled `daily-guard`と`build`の成功を確認。候補jobの同名checkやコピーされたJSONでは代用しない。trusted guardの実jobログから`JAMIO_DAILY_VALIDATION`を読み、`status=guard-passed`、PR番号・head/baseが現在のdaily PRと一致することを確認する。
+3. **承認前の必須照合（N-1）:** 編集者が確認した§3の署名検証済み`trusted-preview.json`の**`digest`・`slug`・`variant`を、上記daily guardの同名3項目と完全一致**させる。日付と`expiresAt`も再確認する。違い・欠落・期限切れ・検証不能なら承認/mergeを停止。同じslugや成功した署名が複数ある場合も、実際に確認した1組を固定し、別runや別紙面に取り替えない。両digestは同じ`editionDigest`の計算なので、新fresh mainからdaily PRを作っても内容が同一なら一致できる。preview packetとdaily PRのhead/baseが同じであることは要求しない。
+4. PR/Issue #15の承認記録に、編集確認者、明示承認文、時刻、preview PR番号・head/base・run ID/attempt・artifact ID・署名検証結果・HTML SHA256、承認対象`digest/slug/variant`、**daily PR番号・head/base・trusted guard run ID/attempt/job URL**を残す。CI成功でも自動公開権限ではない。通常merge直前にもfresh main/head・guard receipt・内容一致・JST期限を再照合。head変更、guard再実行、main前進で旧guardが失効、原稿変更時は停止して新しいguardと必要な編集確認/承認を取り直す。内容digestが変わったら必ず新しい署名済み紙面を再レビューする。
+5. merged exact-main Pages/HTML/digest/slug/variant/URL/publication.json receiptが、**承認記録のdigest/slug/variant**およびdaily guardと一致して初めて`published`。別SHAの過去receiptで代用しない。朝刊がまだ発行できていない日は、夕刊のdaily PRを作らず記事調査・見送り判断だけにする。
+6. notifier/lease/outbox/連続稼働acceptanceは別ゲート。恒常運用をLLMの無制限な自動判断に依存させない。
 
 ## 5. このPRのreleaseと残存検証
 
-- Claude Code / Opus 5.5 が[PR #46 head a32964b の独立レビュー](https://github.com/hm2236/jamio-news/pull/46#pullrequestreview-5456457355)を実施。P2-1 artifact出所、P2-2 `$`置換、P2-3旧文書、P2-4匿名API、P3を報告。作成者はP2修正・追加テスト・exact-head CIまで担当し、**修正後の新SHAをClaudeに再レビュー**してからmainへ通常mergeする。人間のGitHub ApprovalとClaudeのCOMMENTは異なる。
+- Claude Code / Opus 5.5の[2回目独立レビュー](https://github.com/hm2236/jamio-news/pull/46#pullrequestreview-5456831157)はhead `081289a487cbe8d397c205b1ea0ca8204f5c2398`、main `137552438046ac6543c3a8e5bf164973f5f2baaf`、487/487を確認。P0/P1なし、前回P2-1〜4はコード修正済み（署名本番未実証）、新P2 N-1とP3 N-2〜6を報告。この修正後の**新exact SHAを独立Claudeに再レビュー**し、阻害指摘を修正・再検証するまでPR46はmerge禁止。GitHub投稿者は所有者`hm2236`だが実レビューはClaudeの別セッション。COMMENTは人間のGitHub formal Approvalではない。
+- Codexが実装、Workがexact headを独立検証し、Claudeは別セッションでread-only再レビューする体制を維持。各実施者・対象SHA・CI/実行ログ・未実証項目をPRとIssue #15に残し、依頼だけを検証完了と記録しない。本番サイト公開・自動merge・secret/settings/ruleset変更は禁止。Bench PR38/39/40/43とIssue45は凍結。
 - #49のmainへの適用と[PR #51](https://github.com/hm2236/jamio-news/pull/51)の拒否テストは完了。#46 merge後に、**新main当日JST**の使い捨てpacket-only Draft PRで真の`pull_request_target`実行、OIDC署名、HTML/receiptの独立検証を必ず再試験する。CIでの合成テストはその代替にならない。
 - `required check`同名ジョブによる代替の可否は未検証仮説。sandbox repoでのみ検証し、production rulesetを直接弱めたり実験でメインに偽ジョブを入れたりしない。拒否ガードの本番受入を自己申告やPR-head statusだけで代用しない。
+
+署名検証オプションと証明書/述語の信頼区分は[GitHub CLI公式](https://cli.github.com/manual/gh_attestation_verify)、storage recordの条件は[使用中の固定Action README](https://github.com/actions/attest/blob/1e69f48acb82d1966a394da916b4c1698aa569d6/README.md#artifact-metadata-storage-records)を参照。証明書identity/source digestの実際の値はmain導入後の受入試験で確認し、不一致を理由に検証条件を緩めない。
