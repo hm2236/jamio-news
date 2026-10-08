@@ -10,6 +10,20 @@ import {validateFreshness} from './daily-pr.mjs';
 const SHA = /^[a-f0-9]{40}$/;
 const EDITION = /^\d{4}-\d{2}-\d{2}-(morning|evening)$/;
 const REPO = 'hm2236/jamio-news';
+const EXPECTED_WORKFLOW_REF = REPO + '/.github/workflows/trusted-recovery-preview.yml@refs/heads/main';
+export function validateTrustedRunContext(ctx, ids) {
+  if (!ctx || ctx.repository !== REPO || ctx.eventName !== 'pull_request_target' ||
+      ctx.ref !== 'refs/heads/main' || ctx.sha !== ids.baseSha ||
+      ctx.workflowRef !== EXPECTED_WORKFLOW_REF || ctx.workflowSha !== ids.baseSha ||
+      !/^[1-9]\\d*$/.test(String(ctx.runId || '')) ||
+      !/^[1-9]\\d*$/.test(String(ctx.runAttempt || ''))) {
+    throw new Error('Trusted workflow identity mismatch');
+  }
+  return {runId:String(ctx.runId), runAttempt:Number(ctx.runAttempt),
+    eventName:ctx.eventName, workflowRef:ctx.workflowRef, workflowSha:ctx.workflowSha,
+    sourceRef:ctx.ref};
+}
+
 const git = (root, args) => execFileSync('git', args, {
   cwd: root, encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024
 }).trim();
@@ -66,30 +80,37 @@ export function validateTrustedPacketCommit(root, event) {
   }
   return {...ids, slug, file, packet, packetSha256: createHash('sha256').update(raw).digest('hex')};
 }
-async function fetchJSON(request, suffix, allow404 = false) {
+async function fetchJSON(request, suffix, token, allow404 = false) {
   const url = 'https://api.github.com/repos/' + REPO + suffix;
   const response = await request(url, {redirect: 'error', signal: AbortSignal.timeout(15000),
-    headers: {'Accept':'application/vnd.github+json', 'User-Agent':'jamio-news-trusted-preview'}});
+    headers: {'Accept':'application/vnd.github+json', 'User-Agent':'jamio-news-trusted-preview',
+      'Authorization':'Bearer ' + token}});
   if (allow404 && response.status === 404) return null;
   if (!response.ok) throw new Error('Trusted live GitHub API check unavailable');
   return response.json();
 }
-export async function trustedPreview(root, event, output, {request = fetch, now = () => new Date()} = {}) {
+export async function trustedPreview(root, event, output, {
+  request = fetch, now = () => new Date(), runContext, token
+} = {}) {
   root = fs.realpathSync(root);
   const ids = validateTrustedPacketCommit(root, event);
+  const run = validateTrustedRunContext(runContext, ids);
+  if (typeof token !== 'string' || token.length < 8) {
+    throw new Error('Trusted read-only GitHub API token unavailable');
+  }
   // A cached event is not an authorization: recheck *live* ref + same PR identity.
   async function fence() {
-    const main = await fetchJSON(request, '/git/ref/heads/main');
+    const main = await fetchJSON(request, '/git/ref/heads/main', token);
     if (main?.object?.sha !== ids.baseSha) throw new Error('Main changed after preview event');
-    const pr = await fetchJSON(request, '/pulls/' + ids.number);
+    const pr = await fetchJSON(request, '/pulls/' + ids.number, token);
     if (pr?.state !== 'open' || pr?.head?.sha !== ids.headSha ||
         pr?.base?.sha !== ids.baseSha || pr?.head?.repo?.full_name !== REPO) {
       throw new Error('Recovery PR identity changed after preview event');
     }
-    if (await fetchJSON(request, '/git/ref/heads/daily/' + ids.slug, true)) {
+    if (await fetchJSON(request, '/git/ref/heads/daily/' + ids.slug, token, true)) {
       throw new Error('Another daily branch already exists');
     }
-    const all = await fetchJSON(request, '/pulls?state=open&head=hm2236:daily/' + ids.slug + '&per_page=100');
+    const all = await fetchJSON(request, '/pulls?state=open&head=hm2236:daily/' + ids.slug + '&per_page=100', token);
     if (!Array.isArray(all) || all.length !== 0) throw new Error('Another daily PR already exists');
   }
   await fence();
@@ -100,12 +121,16 @@ export async function trustedPreview(root, event, output, {request = fetch, now 
     const offline = createOfflineReview(output);
     await fence();
     // Midnight rollover is checked AFTER the final live collision fence too.
+    const completedAt = now();
     validateFreshness('daily/' + ids.slug, ids.packet.package.edition,
-      ids.packet.package.articles, now());
+      ids.packet.package.articles, completedAt);
     const result = {status:'trusted-preview-ready', source:'trusted-main-pull-request-target',
       baseSha: ids.baseSha, headSha: ids.headSha, pr: ids.number,
       slug: ids.slug, digest: receipt.digest, packetSha256: ids.packetSha256,
-      offlineSha256: offline.sha256,
+      offlineSha256: offline.sha256, ...run,
+      validatedAt:completedAt.toISOString(),
+      expiresAt:new Date(completedAt.getTime() + 24 * 3600000).toISOString(),
+      attestationRequired:true,
       publicationAuthorized:false, editorialReviewRequired:true};
     fs.writeFileSync(path.join(output,'trusted-preview.json'),
       JSON.stringify(result, null, 2) + '\n', {flag:'wx'});
@@ -131,7 +156,16 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     }
     git(root,['fetch','origin',ids.headSha]);
     console.log('JAMIO_TRUSTED_PREVIEW ' +
-      JSON.stringify(await trustedPreview(root,event,output)));
+      JSON.stringify(await trustedPreview(root,event,output,{
+        token:process.env.GITHUB_TOKEN,
+        runContext:{
+          repository:process.env.GITHUB_REPOSITORY, eventName:process.env.GITHUB_EVENT_NAME,
+          ref:process.env.GITHUB_REF, sha:process.env.GITHUB_SHA,
+          workflowRef:process.env.GITHUB_WORKFLOW_REF,
+          workflowSha:process.env.GITHUB_WORKFLOW_SHA,
+          runId:process.env.GITHUB_RUN_ID, runAttempt:process.env.GITHUB_RUN_ATTEMPT
+        }
+      })));
   } catch {
     // Never print the untrusted JSON payload, credentials or arbitrary paths.
     console.error(JSON.stringify({status:'failed',publicationAuthorized:false,
