@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {previewPackage, MAX_PACKET_BYTES} from '../scripts/recovery-preview.mjs';
+import {createOfflineReview} from '../scripts/recovery-offline-review.mjs';
 import {loadRepository, canonical, editionDigest} from '../scripts/production.mjs';
 import {recoveryStatus} from '../scripts/recovery-status.mjs';
 
@@ -45,6 +46,21 @@ test('morning 5 and evening 1-5 render previews through actual daily validation 
     for(const e of repo.editions)assert.equal(manifest.editions.find(p=>p.slug===e.slug).digest,editionDigest(e,repo.articles,repo.prices));
     assert.equal(manifest.editions.find(p=>p.slug===result.slug).digest,result.digest);
     assert.ok(fs.readFileSync(path.join(f.output,'site/editions',result.slug,'index.html'),'utf8').includes(result.digest));
+    const offline=createOfflineReview(f.output);
+    assert.equal(offline.status,'offline-review-ready');
+    assert.equal(offline.publicationAuthorized,false);
+    assert.equal(offline.editorialReviewRequired,true);
+    assert.equal(offline.baseSha,f.baseSha);
+    assert.equal(offline.digest,result.digest);
+    assert.equal(offline.articles,count);
+    const view=fs.readFileSync(path.join(f.output,'offline-review.html'),'utf8');
+    assert.ok(view.includes('<style>'));
+    assert.ok(view.includes('未公開・編集確認用'));
+    assert.ok(view.includes('href="#review-'+f.packet.package.articles[0].slug+'"'));
+    assert.ok(view.includes('id="review-'+f.packet.package.articles[0].slug+'"'));
+    assert.ok(view.includes('Synthetic recovery 0'));
+    assert.doesNotMatch(view,/<script\b|<link\b|href="\/jamio-news\//);
+    assert.throws(()=>createOfflineReview(f.output),/EEXIST/);
     const files=JSON.parse(fs.readFileSync(path.join(f.output,'candidate-files.json'),'utf8'));
     assert.equal(files.at(-1).file,'content/editions/'+result.slug+'.md');
     assert.deepEqual(trackedBytes(f),before);assert.equal(f.git(['status','--porcelain']),'');
@@ -102,4 +118,23 @@ test('live status proves both explicit editions against exact SHA and distinguis
   main='0'.repeat(40);await assert.rejects(recoveryStatus(f.root,{request,now:clock}),/exact current main/);
   main=f.baseSha;mutateHTML=true;await assert.rejects(recoveryStatus(f.root,{request,now:clock}),/HTML/);
   mutateHTML=false;manifest.commit='0'.repeat(40);await assert.rejects(recoveryStatus(f.root,{request,now:clock}),/manifest/);
+});
+
+test('offline review refuses forged publication status and manifest mismatches',t=>{
+  const f=fixture(t,'evening',1);
+  previewPackage(f.root,f.packet,f.output,f.options);
+  const receiptFile=path.join(f.output,'preview.json');
+  const original=fs.readFileSync(receiptFile,'utf8');
+  const bad=JSON.parse(original);
+  bad.publicationAuthorized=true;
+  fs.writeFileSync(receiptFile,JSON.stringify(bad));
+  assert.throws(()=>createOfflineReview(f.output),/unpublished/);
+  assert.equal(fs.existsSync(path.join(f.output,'offline-review.html')),false);
+  fs.writeFileSync(receiptFile,original);
+  const manifestFile=path.join(f.output,'site/publication.json');
+  const manifest=JSON.parse(fs.readFileSync(manifestFile,'utf8'));
+  manifest.commit='0'.repeat(40);
+  fs.writeFileSync(manifestFile,JSON.stringify(manifest));
+  assert.throws(()=>createOfflineReview(f.output),/manifest/);
+  assert.equal(fs.existsSync(path.join(f.output,'offline-review.html')),false);
 });
