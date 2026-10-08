@@ -15,8 +15,8 @@ export function validateTrustedRunContext(ctx, ids) {
   if (!ctx || ctx.repository !== REPO || ctx.eventName !== 'pull_request_target' ||
       ctx.ref !== 'refs/heads/main' || ctx.sha !== ids.baseSha ||
       ctx.workflowRef !== EXPECTED_WORKFLOW_REF || ctx.workflowSha !== ids.baseSha ||
-      !/^[1-9]\\d*$/.test(String(ctx.runId || '')) ||
-      !/^[1-9]\\d*$/.test(String(ctx.runAttempt || ''))) {
+      !/^[1-9]\d*$/.test(String(ctx.runId || '')) ||
+      !/^[1-9]\d*$/.test(String(ctx.runAttempt || ''))) {
     throw new Error('Trusted workflow identity mismatch');
   }
   return {runId:String(ctx.runId), runAttempt:Number(ctx.runAttempt),
