@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/recovery-preview.yml'
       - 'scripts/recovery-preview.mjs'
+      - 'scripts/recovery-offline-review.mjs'
       - 'scripts/recovery-status.mjs'
       - 'test/recovery-preview.test.mjs'
       - 'docs/operations-recovery.md'
@@ -83,6 +84,7 @@ jobs:
           }
           await fence();
           execFileSync(process.execPath,['../tooling/scripts/recovery-preview.mjs',file,process.env.OUTPUT_DIR],{stdio:'inherit',timeout:120000});
+          execFileSync(process.execPath,['../tooling/scripts/recovery-offline-review.mjs',process.env.OUTPUT_DIR],{stdio:'inherit',timeout:30000});
           try { await fence(); }
           catch(error) { fs.rmSync(process.env.OUTPUT_DIR,{recursive:true,force:true});throw error; }
           console.log('Unpublished preview only. Separate editorial review and daily PR required.');
