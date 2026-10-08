@@ -6,32 +6,44 @@ on:
       - 'recovery-packets/**'
 permissions:
   contents: read
+  pull-requests: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 concurrency:
   group: trusted-recovery-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
   trusted-recovery-preview:
-    # No forks, no PR-supplied commands, no write permission, no deployment.
-    if: github.repository == 'hm2236/jamio-news' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main'
+    # The PR is data only. No fork, non-main base, stale base SHA, or PR script.
+    if: github.repository == 'hm2236/jamio-news' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main' && github.event.pull_request.base.sha == github.sha
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # pull_request_target workflow AND scripts run exclusively from trusted main.
-      # Candidate blobs are read with git show after exact-diff/parent/mode checks.
-      - uses: actions/checkout@v6
+      # The workflow and all executable code MUST come from exact protected main.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      - name: Render packet from exact head as untrusted data using trusted main
+      - name: Render packet-only PR data with trusted main and read-only API
         env:
           OUTPUT_DIR: ${{ runner.temp }}/trusted-unpublished-review
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/recovery-trusted-pr.mjs "$OUTPUT_DIR"
-      - name: Retain trusted unpublished newspaper for editorial review
-        uses: actions/upload-artifact@v4
+      # A self-written JSON receipt is NOT proof of source. Sign both byte-exact
+      # files with the workflow identity in GitHub's OIDC-backed Sigstore.
+      - name: Attest trusted editorial review artifact provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/trusted-unpublished-review/offline-review.html
+            ${{ runner.temp }}/trusted-unpublished-review/trusted-preview.json
+      - name: Retain signed unpublished newspaper for editorial review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: trusted-unpublished-review-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/trusted-unpublished-review/
