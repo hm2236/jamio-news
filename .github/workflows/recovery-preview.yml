@@ -5,8 +5,11 @@ on:
       - '.github/workflows/recovery-preview.yml'
       - 'scripts/recovery-preview.mjs'
       - 'scripts/recovery-offline-review.mjs'
+      - 'scripts/recovery-trusted-pr.mjs'
+      - '.github/workflows/trusted-recovery-preview.yml'
       - 'scripts/recovery-status.mjs'
       - 'test/recovery-preview.test.mjs'
+      - 'test/recovery-trusted-pr.test.mjs'
       - 'docs/operations-recovery.md'
 permissions:
   contents: read
