@@ -140,6 +140,19 @@ export async function trustedPreview(root, event, output, {
     throw error;
   }
 }
+// Never print untrusted packet text or GitHub API response bodies to logs.
+export function classifyTrustedPreviewFailure(error) {
+  const message = error instanceof Error ? error.message : '';
+  if (/Trusted workflow identity mismatch/.test(message)) return 'workflow-identity';
+  if (/read-only GitHub API token unavailable/.test(message)) return 'auth-unavailable';
+  if (/Current main SHA has advanced|Main changed after preview|exact current main|Checkout does not match|source checkout changed/i.test(message)) return 'stale-main';
+  if (/Recovery PR identity changed|same-repository recovery PR/i.test(message)) return 'pr-moved';
+  if (/Another daily branch|Another daily PR|already exists/i.test(message)) return 'daily-collision';
+  if (/Stale|future|freshness|JST/i.test(message)) return 'jst-clock';
+  if (/Trusted live GitHub API check unavailable|Current main cannot be read/i.test(message)) return 'api-unavailable';
+  if (/JSON|packet|commit|blob|file|slug|mode|regular/i.test(message)) return 'packet-rejected';
+  return 'preview-rejected';
+}
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const [output, ...rest] = process.argv.slice(2);
@@ -166,10 +179,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
           runId:process.env.GITHUB_RUN_ID, runAttempt:process.env.GITHUB_RUN_ATTEMPT
         }
       })));
-  } catch {
-    // Never print the untrusted JSON payload, credentials or arbitrary paths.
+  } catch (error) {
+    // Only a fixed reason code is exposed, never content, secrets, or URLs.
     console.error(JSON.stringify({status:'failed',publicationAuthorized:false,
-      error:'Trusted preview rejected: inspect current main/PR/diff/JST/source evidence'}));
+      code:classifyTrustedPreviewFailure(error)}));
     process.exitCode = 1;
   }
 }
