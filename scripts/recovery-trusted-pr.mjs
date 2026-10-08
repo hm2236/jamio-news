@@ -112,6 +112,27 @@ export async function trustedPreview(root, event, output, {
     }
     const all = await fetchJSON(request, '/pulls?state=open&head=hm2236:daily/' + ids.slug + '&per_page=100', token);
     if (!Array.isArray(all) || all.length !== 0) throw new Error('Another daily PR already exists');
+    // A second unpublished packet for the same slug would produce competing
+    // "trusted" review evidence. Fail closed even though neither PR can merge.
+    const open = await fetchJSON(request, '/pulls?state=open&base=main&per_page=100', token);
+    if (!Array.isArray(open) || open.length >= 100) {
+      throw new Error('Recovery PR listing incomplete');
+    }
+    for (const contender of open) {
+      if (contender.number === ids.number ||
+          contender.head?.repo?.full_name !== REPO ||
+          !contender.head?.ref?.startsWith('recovery/')) continue;
+      if (!Number.isSafeInteger(contender.number) || contender.number < 1) {
+        throw new Error('Recovery PR listing malformed');
+      }
+      const files = await fetchJSON(request, '/pulls/' + contender.number + '/files?per_page=100', token);
+      if (!Array.isArray(files) || files.length >= 100) {
+        throw new Error('Recovery PR file listing incomplete');
+      }
+      if (files.some(row => row.filename === ids.file)) {
+        throw new Error('Another recovery packet PR already exists');
+      }
+    }
   }
   await fence();
   let created = false;
@@ -147,7 +168,7 @@ export function classifyTrustedPreviewFailure(error) {
   if (/read-only GitHub API token unavailable/.test(message)) return 'auth-unavailable';
   if (/Current main SHA has advanced|Main changed after preview|exact current main|Checkout does not match|source checkout changed/i.test(message)) return 'stale-main';
   if (/Recovery PR identity changed|same-repository recovery PR/i.test(message)) return 'pr-moved';
-  if (/Another daily branch|Another daily PR|already exists/i.test(message)) return 'daily-collision';
+  if (/Another daily branch|Another daily PR|Another recovery packet PR|already exists/i.test(message)) return 'daily-collision';
   if (/Stale|future|freshness|JST/i.test(message)) return 'jst-clock';
   if (/Trusted live GitHub API check unavailable|Current main cannot be read/i.test(message)) return 'api-unavailable';
   if (/JSON|packet|commit|blob|file|slug|mode|regular/i.test(message)) return 'packet-rejected';
