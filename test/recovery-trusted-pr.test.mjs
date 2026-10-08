@@ -144,6 +144,19 @@ test('trusted preview discards all output if main advances during final collisio
   assert.equal(f.git(['status','--porcelain']),'');
 });
 
+test('trusted preview drops output if midnight JST arrives after final live check',async t=>{
+  const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]);
+  let calls=0;
+  const clock=()=>++calls<=2
+    ?new Date('2026-10-09T23:59:58+09:00')
+    :new Date('2026-10-10T00:00:01+09:00');
+  await assert.rejects(
+    trustedPreview(f.root,f.event,f.output,{request:f.mock(),now:clock}),/Stale/);
+  assert.equal(fs.existsSync(f.output),false);
+  assert.equal(f.git(['status','--porcelain']),'');
+});
+
 test('trusted preview fails closed on daily branch collision',async t=>{
   const f=fixture(t);
   f.git(['checkout','--detach',f.baseSha]);
