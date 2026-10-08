@@ -124,6 +124,7 @@ test('trusted main rejects payload/file identity differences and non regular pac
 
   const badLink=fixture(t);
   badLink.git(['rm',badLink.file]);
+  fs.mkdirSync(path.dirname(path.join(badLink.root,badLink.file)),{recursive:true});
   fs.symlinkSync('../site.config.json',path.join(badLink.root,badLink.file));
   reseal(badLink);
   assert.throws(()=>validateTrustedPacketCommit(badLink.root,badLink.event),/regular file/);
