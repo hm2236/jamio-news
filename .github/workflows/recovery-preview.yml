@@ -1,0 +1,104 @@
+name: Recovery preview (no publication)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/recovery-preview.yml'
+      - 'scripts/recovery-preview.mjs'
+      - 'scripts/recovery-status.mjs'
+      - 'test/recovery-preview.test.mjs'
+      - 'docs/operations-recovery.md'
+      - 'recovery-packets/**'
+permissions:
+  contents: read
+concurrency:
+  group: recovery-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  recovery-preview:
+    if: github.repository == 'hm2236/jamio-news' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: tooling
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          path: base
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Execute morning and evening recovery rehearsal
+        working-directory: tooling
+        run: |
+          node --version
+          node --test test/recovery-preview.test.mjs
+          git diff --check
+          test -z "$(git status --porcelain)"
+      - name: Read exact-main live morning and evening publication proofs
+        working-directory: base
+        run: node ../tooling/scripts/recovery-status.mjs "$RUNNER_TEMP/recovery-live-status.json"
+      - name: Preview one human-authored packet if supplied
+        env:
+          RECOVERY_BASE: ${{ github.event.pull_request.base.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/unpublished-recovery-preview
+        working-directory: base
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import {execFileSync} from 'node:child_process';
+          const directory = '../tooling/recovery-packets';
+          if (!fs.existsSync(directory)) {
+            console.log('No editorial packet supplied; only synthetic rehearsal and read-only live status were executed.');
+            process.exit(0);
+          }
+          const stat = fs.lstatSync(directory);
+          if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Packet directory must be regular');
+          const files = fs.readdirSync(directory);
+          if (files.length !== 1 || !/^\d{4}-\d{2}-\d{2}-(morning|evening)\.json$/.test(files[0])) throw new Error('Supply exactly one explicit edition packet');
+          const file = path.join(directory,files[0]), fileStat=fs.lstatSync(file);
+          if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > 1024*1024) throw new Error('Packet must be regular and <=1 MiB');
+          const packet = JSON.parse(fs.readFileSync(file,'utf8'));
+          if (packet.package?.edition?.slug + '.json' !== files[0] || packet.baseSha !== process.env.RECOVERY_BASE) throw new Error('Packet filename/base mismatch');
+          const api = 'https://api.github.com/repos/hm2236/jamio-news';
+          async function get(suffix,allow404=false) {
+            const response=await fetch(api+suffix,{redirect:'error',signal:AbortSignal.timeout(15000)});
+            if(allow404 && response.status===404)return null;
+            if(!response.ok)throw new Error('Read-only collision check unavailable');
+            return response.json();
+          }
+          async function fence() {
+            const main=await get('/git/ref/heads/main');
+            if(main.object?.sha!==packet.baseSha)throw new Error('Main advanced; prepare a fresh packet without rebasing a sealed daily candidate');
+            const slug=packet.package.edition.slug;
+            if(await get('/git/ref/heads/daily/'+slug,true))throw new Error('Existing daily branch; reconcile with its owner');
+            const prs=await get('/pulls?state=open&head=hm2236:daily/'+slug+'&per_page=100');
+            if(!Array.isArray(prs)||prs.length)throw new Error('Existing daily PR or ambiguous response');
+          }
+          await fence();
+          execFileSync(process.execPath,['../tooling/scripts/recovery-preview.mjs',file,process.env.OUTPUT_DIR],{stdio:'inherit',timeout:120000});
+          try { await fence(); }
+          catch(error) { fs.rmSync(process.env.OUTPUT_DIR,{recursive:true,force:true});throw error; }
+          console.log('Unpublished preview only. Separate editorial review and daily PR required.');
+          JS
+      - name: Retain read-only status evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-live-status-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-live-status.json
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Retain explicitly unpublished preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: unpublished-recovery-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/unpublished-recovery-preview/
+          retention-days: 7
+          if-no-files-found: ignore
