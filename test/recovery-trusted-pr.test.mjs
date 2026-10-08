@@ -201,6 +201,35 @@ test('trusted preview fails closed on daily branch collision',async t=>{
   assert.equal(fs.existsSync(f.output),false);
 });
 
+
+test('trusted preview refuses a competing open recovery packet PR for the same slug',async t=>{
+  const f=fixture(t);
+  f.git(['checkout','--detach',f.baseSha]);
+  const request=async url=>{
+    const resource=url.split('/repos/hm2236/jamio-news')[1];
+    if(resource==='/git/ref/heads/main')
+      return new Response(JSON.stringify({object:{sha:f.baseSha}}));
+    if(resource==='/pulls/91')
+      return new Response(JSON.stringify({state:'open',
+        head:{sha:f.headSha,repo:{full_name:'hm2236/jamio-news'}},base:{sha:f.baseSha}}));
+    if(resource.startsWith('/git/ref/heads/daily/'))
+      return new Response('not found',{status:404});
+    if(resource.startsWith('/pulls?state=open&head='))
+      return new Response('[]');
+    if(resource.startsWith('/pulls?state=open&base=main'))
+      return new Response(JSON.stringify([{number:92,head:{
+        ref:'recovery/competing-packet',repo:{full_name:'hm2236/jamio-news'}
+      }}]));
+    if(resource==='/pulls/92/files?per_page=100')
+      return new Response(JSON.stringify([{filename:f.file,status:'added'}]));
+    throw new Error('Unexpected mock route: '+resource);
+  };
+  await assert.rejects(
+    trustedPreview(f.root,f.event,f.output,{...f.options,request,now}),
+    /Another recovery packet PR already exists/);
+  assert.equal(fs.existsSync(f.output),false);
+});
+
 test('trusted workflow stays pinned to main, signs HTML/receipt and never checks out PR code',()=>{
   const y=fs.readFileSync(path.join(source,'.github/workflows/trusted-recovery-preview.yml'),'utf8');
   assert.match(y,/pull_request_target:/);
