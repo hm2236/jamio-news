@@ -1,0 +1,15 @@
+# Bounded official feed reachability probe
+
+This separate PR-only workflow measures a single hosted runner's bounded responses from the officially advertised OpenAI News RSS and GitHub Changelog RSS endpoints. It does not add sources or adapters to Radar and cannot authorize publication.
+
+The fixed targets are `https://openai.com/news/rss.xml` and `https://github.blog/changelog/feed/`, each preceded by its host's `/robots.txt`. At most four GET requests run sequentially, with no retries, redirect following, alternate targets, credentials, browser fallback, or user-agent workaround. The honest user agent is `JAMIO-ReadOnly-Feed-Probe/1.0`.
+
+DNS has an eight-second deadline. All resolved addresses must pass the existing reviewed public-address policy; mixed/private/reserved sets are rejected. The validated addresses are pinned using the existing request transport. Each response has an eight-second deadline, 64 KiB robots or 256 KiB feed limit, identity encoding, approved content type, and strict UTF-8 decoding.
+
+The robots reader is deliberately narrow. It combines wildcard groups and case-insensitive exact product-token groups for `JAMIO-ReadOnly-Feed-Probe`. Any applicable literal-prefix deny wins, even over an allow. This conservative union may over-deny compared with a general robots implementation. Applicable wildcard/end-anchor syntax, percent-encoded paths, unknown access directives, malformed groups, or unresolved policy stop the source. Sitemap metadata is ignored and never followed. An unavailable or forbidden robots response also stops the feed request.
+
+The workflow accepts only same-repository pull requests targeting main and affecting its four owned paths. It checks out the exact PR head without persisted credentials and binds the script's run, attempt, PR identity, repository, workflow/ref, declared head, and actual Git HEAD before network activity. The report separately identifies the Actions merge-ref SHA. It has only contents-read permission, Node 22 on Ubuntu, and a two-minute timeout. There is no cron, manual dispatch, push trigger, artifact upload, token passed to the probe, or deployment.
+
+Expected HTTP, DNS, transport, size/type/encoding/UTF-8, and robots policy failures produce fixed metadata and an informational unproven warning; unexpected environment or implementation failures fail the job. Successful HTTP 200 proves only one bounded response. XML validity, adapter readiness, item completeness, editorial coverage, recall, broader terms review, and production readiness remain **NOT PROVEN**.
+
+Only fixed endpoint identities, HTTP statuses, allowlisted categories, byte counts, validated feed-body digests, and exact run/head metadata appear in JSON logs and the Actions summary. Raw bodies, headers, titles, article links, DNS addresses, and remote error text are discarded. No Seen, Observation, state, or publication output is generated. Offline tests never perform live network requests; hosted results remain unproven until the reviewed Draft PR executes this workflow once.
